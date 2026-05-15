@@ -260,13 +260,15 @@ def get_clob_client() -> Optional[ClobClient]:
     if _cached_clob_client and (now - _cached_clob_client_init_time) < CLOB_CLIENT_CACHE_DURATION:
         return _cached_clob_client
 
-    private_key = os.getenv("POLY_PRIVATE_KEY", "")
+    private_key = os.getenv("PRIVATE_KEY", "") or os.getenv("POLY_PRIVATE_KEY", "")
     if not private_key: return None
 
     try:
+        funder = (os.getenv("FUNDER_ADDRESS", "") or os.getenv("POLY_FUNDER_ADDRESS", "")
+                   or os.getenv("PROXY_ADDRESS", ""))
         clob = ClobClient(
             POLYMARKET_CLOB, key=private_key, chain_id=CHAIN_ID,
-            signature_type=2, funder=os.getenv("POLY_FUNDER_ADDRESS", ""),
+            signature_type=2, funder=funder,
         )
         clob.set_api_creds(clob.create_or_derive_api_creds())
         _cached_clob_client = clob
