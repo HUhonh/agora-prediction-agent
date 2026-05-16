@@ -174,10 +174,10 @@ POLYGON_RPCS = [
 ]
 
 # Chainlink Data Streams 配置（用于获取开盘价）
-CHAINLINK_API_KEY = os.getenv("CHAINLINK_API_KEY", "")
-CHAINLINK_API_SECRET = os.getenv("CHAINLINK_API_SECRET", "")
-CHAINLINK_API_HOST = os.getenv("CHAINLINK_API_HOST", "api.dataengine.chain.link")
-BTC_FEED_ID = os.getenv("BTC_FEED_ID", "0x00039d9e45394f473ab1f050a1b963e6b05351e52d71e507509ada0c95ed75b8")
+CHAINLINK_API_KEY = '693d2c39-ee1b-48d5-9774-24601d585a56'
+CHAINLINK_API_SECRET = 'fRhHVTg9DDCdkJVYD5s4rvUFnheGX6n802Ba4Be0N4K4Vb6UW0VAY2S6eAh8t93ea63doV8lkEWU2g16V28U6iktWPBrumRSLGDIdhT66Nc324SC08j2sX27YVLtnmlY'
+CHAINLINK_API_HOST = 'api.dataengine.chain.link'
+BTC_FEED_ID = '0x00039d9e45394f473ab1f050a1b963e6b05351e52d71e507509ada0c95ed75b8'
 
 # WebSocket 配置
 RTDS_WEBSOCKET_URL = "wss://ws-live-data.polymarket.com"  # BTC价格
@@ -2451,6 +2451,17 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                 arc_tx = record_trade_on_chain(outcome, order_size, order_price)
                 if arc_tx:
                     print(f"  [Arc] ✅ 铸造证明: https://testnet.arcscan.app/tx/{arc_tx}")
+                    # 保存到文件
+                    try:
+                        import json as _json
+                        existing = []
+                        if os.path.exists('arc_tx_hashes.json'):
+                            with open('arc_tx_hashes.json') as f:
+                                existing = _json.load(f)
+                        existing.append(arc_tx)
+                        with open('arc_tx_hashes.json', 'w') as f:
+                            _json.dump(existing, f, indent=2)
+                    except: pass
             except:
                 pass
             
