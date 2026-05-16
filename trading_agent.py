@@ -225,10 +225,10 @@ POLYGON_RPCS = [
 ]
 
 # Chainlink Data Streams 配置（用于获取开盘价）
-CHAINLINK_API_KEY = ''
-CHAINLINK_API_SECRET = ''
-CHAINLINK_API_HOST = 'api.dataengine.chain.link'
-BTC_FEED_ID = '0x00039d9e45394f473ab1f050a1b963e6b05351e52d71e507509ada0c95ed75b8'
+CHAINLINK_API_KEY = os.getenv("CHAINLINK_API_KEY", "")
+CHAINLINK_API_SECRET = os.getenv("CHAINLINK_API_SECRET", "")
+CHAINLINK_API_HOST = os.getenv("CHAINLINK_API_HOST", "api.dataengine.chain.link")
+BTC_FEED_ID = os.getenv("BTC_FEED_ID", "0x00039d9e45394f473ab1f050a1b963e6b05351e52d71e507509ada0c95ed75b8")
 
 # WebSocket 配置
 RTDS_WEBSOCKET_URL = "wss://ws-live-data.polymarket.com"  # BTC价格
@@ -1472,7 +1472,7 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
             print(f"\n📤 下单结果: {order_result}")
             
             # 记录首单已下单（兼容原有状态字段）
-            if "下单成功" in order_result:
+            if "下单成功" in str(order_result):
                 hedge_state['combo1_order_placed'] = True
                 print(f"  记录: 首单已下单")
                 # Arc: 记录交易
@@ -1638,7 +1638,7 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
                             print(f"\n📤 对冲下单结果: {hedge_result}")
                             
                             # 只有在下单成功时才标记对冲订单已下单
-                            if "下单成功" in hedge_result:
+                            if "下单成功" in str(hedge_result):
                                 hedge_state['hedge_orders_by_market'][current_market_slug] = True
                                 hedge_state['hedge_triggered'] = True
                                 hedge_state['combo1_hedge_executed'] = True
