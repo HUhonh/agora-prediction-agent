@@ -8,7 +8,9 @@
 <style>
 :root{--primary:#0C5CAB;--surface:#09090b;--panel:#121217;--border:#222229;--text:#fafafa;--muted:#878793;--success:#10b981;--warning:#f59e0b}
 *,*::before,*::after{box-sizing:border-box;margin:0}
-body{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;background:var(--surface);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+body{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;background:var(--surface);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.bg-glow{position:fixed;top:-50%;left:-50%;width:200%;height:200%;z-index:-1;opacity:.15;background:radial-gradient(ellipse at 30% 20%,#0C5CAB 0%,transparent 40%),radial-gradient(ellipse at 70% 80%,#0a4a8a 0%,transparent 40%),radial-gradient(ellipse at 50% 50%,#063264 0%,transparent 50%);animation:drift 20s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(2%,1%) rotate(1deg)}50%{transform:translate(0,2%) rotate(0deg)}75%{transform:translate(-1%,1%) rotate(-1deg)}}
 header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 h1{font-size:24px;font-weight:600;letter-spacing:-.02em}
 p.sub{font-size:13px;color:var(--muted)}
@@ -46,6 +48,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 </style>
 </head>
 <body>
+<div class="bg-glow"></div>
 <header>
   <div>
     <h1>Agora Prediction Agent</h1>
