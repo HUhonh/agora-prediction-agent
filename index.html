@@ -47,6 +47,7 @@ main{max-width:960px;margin:0 auto;padding:32px}
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 1 0 0 4h3a1 1 0 0 0 1-1v-2.5"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
     Connect Wallet
   </button>
+  <button class="btn" id="disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect</button>
 </header>
 <main>
   <div id="wallet-info" style="display:none;margin-bottom:24px" class="panel">
@@ -112,9 +113,16 @@ async function connectWallet(){
     document.getElementById('wallet-addr').textContent=address.slice(0,6)+'...'+address.slice(-4);
     document.getElementById('wallet-bal').textContent=(Number(ethers.formatEther(bal)).toFixed(4))+' USDC';
     document.getElementById('wallet-info').style.display='block';
-    document.getElementById('connect-btn').textContent=address.slice(0,6)+'...'+address.slice(-4);
-    document.getElementById('connect-btn').disabled=true;
+    document.getElementById('connect-btn').style.display='none';
+    document.getElementById('disconnect-btn').style.display='inline-flex';
   }catch(e){console.error(e)}
+}
+
+function disconnectWallet(){
+  provider=null;signer=null;address=null;
+  document.getElementById('wallet-info').style.display='none';
+  document.getElementById('connect-btn').style.display='inline-flex';
+  document.getElementById('disconnect-btn').style.display='none';
 }
 
 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
