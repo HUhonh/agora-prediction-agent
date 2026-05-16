@@ -13,10 +13,13 @@ header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;just
 h1{font-size:24px;font-weight:600;letter-spacing:-.02em}
 p.sub{font-size:13px;color:var(--muted)}
 h2{font-size:14px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
-a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
-main{max-width:960px;margin:0 auto;padding:32px}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:none;filter:brightness(1.2)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:border-color .3s}
+.panel:hover{border-color:rgba(12,92,171,.3)}
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
 .stat-row:last-child{border-bottom:none}
 .stat-label{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
@@ -27,7 +30,8 @@ main{max-width:960px;margin:0 auto;padding:32px}
 .tx-list a:hover{color:var(--primary);text-decoration:none}
 .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:12px}
 .badge-on{background:rgba(16,185,129,.12);color:var(--success)}
-.dot{width:6px;height:6px;border-radius:50%;background:var(--success)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
+.price-flash{animation:fadein .4s ease-out}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
 .btn:hover{background:var(--primary);border-color:var(--primary)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -125,11 +129,18 @@ function disconnectWallet(){
   document.getElementById('disconnect-btn').style.display='none';
 }
 
+let lastPrice=0;
 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{document.getElementById('btc').textContent='$'+parseInt(d.price).toLocaleString()})
+  .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()})
   .catch(()=>document.getElementById('btc').textContent='—');
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{document.getElementById('btc').textContent='$'+parseInt(d.price).toLocaleString()}).catch(()=>{}),10000);
+  .then(r=>r.json()).then(d=>{
+    const p=parseInt(d.price);
+    const el=document.getElementById('btc');
+    el.textContent='$'+p.toLocaleString();
+    if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}
+    lastPrice=p;
+  }).catch(()=>{}),10000);
 </script>
 </body>
 </html>
