@@ -25,6 +25,8 @@ a{color:#58a6ff}
 <div class="stat"><span class="label">Chain</span><span class="value">Arc Testnet (5042002)</span></div>
 <div class="stat"><span class="label">Strategy</span><span class="value">Multi-combo + Auto-hedge</span></div>
 <div class="stat"><span class="label">Status</span><span class="value" style="color:#3fb950">● Running</span></div>
+<div class="stat"><span class="label">BTC Price</span><span class="value" id="btc-price" style="color:#58a6ff">Loading...</span></div>
+<div class="stat"><span class="label">Arc Mints</span><span class="value">5 verified onchain</span></div>
 </div>
 
 <div class="card">
@@ -52,5 +54,13 @@ a{color:#58a6ff}
 <div class="tx"><a href="https://testnet.arcscan.app/address/0x1E17628df3a0c079884526cA026952DB70157C90" target="_blank">Arc Wallet</a></div>
 <div class="tx"><a href="https://testnet.arcscan.app/address/0x8004A818BFB912233c491871b3d84c89A494BD9e" target="_blank">ERC-8004 Identity</a></div>
 </div>
+<script>
+fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+  .then(r=>r.json()).then(d=>document.getElementById('btc-price').textContent='$'+parseFloat(d.price).toFixed(0))
+  .catch(()=>document.getElementById('btc-price').textContent='--');
+setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+  .then(r=>r.json()).then(d=>document.getElementById('btc-price').textContent='$'+parseFloat(d.price).toFixed(0))
+  .catch(()=>{}),10000);
+</script>
 </body>
 </html>
