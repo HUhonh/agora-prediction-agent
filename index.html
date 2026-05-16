@@ -4,43 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Agora Prediction Agent</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--primary:#0C5CAB;--surface:#000;--panel:#0a0a0a;--border:#1a1a1a;--text:#fff;--muted:#888;--success:#10b981}
+:root{--neon:#BBF351;--blue:#00BCFF;--bg:#000;--panel:#0a0a0a;--border:#1a1a1a;--text:#eee;--muted:#999}
 *,*::before,*::after{box-sizing:border-box;margin:0}
-body{font-family:'IBM Plex Sans',system-ui,sans-serif;background:var(--surface);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
-header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;position:relative;z-index:1}
-.hero{position:relative;overflow:hidden;padding:48px 32px;background:#000}
-.hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse 600px 300px at 50% -20%,rgba(12,92,171,.25),transparent),radial-gradient(ellipse 400px 200px at 80% 100%,rgba(10,74,138,.15),transparent);animation:shift 8s ease-in-out infinite}
-@keyframes shift{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-10px)}}
+body{font-family:'Roboto',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;position:relative;z-index:1;backdrop-filter:blur(10px)}
+.neon-glow{text-shadow:0 0 10px var(--neon),0 0 30px var(--neon),0 0 60px rgba(187,243,81,.3)}
+.neon-blue{text-shadow:0 0 10px var(--blue),0 0 30px var(--blue)}
+.hero{position:relative;overflow:hidden;padding:48px 32px;background:linear-gradient(180deg,rgba(0,188,255,.04) 0%,transparent 50%,rgba(187,243,81,.02) 100%)}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 300px at 50% -20%,rgba(0,188,255,.12),transparent),radial-gradient(ellipse 400px 250px at 80% 80%,rgba(187,243,81,.08),transparent);animation:shift 10s ease-in-out infinite}
+@keyframes shift{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-15px)}}
 .hero-content{position:relative;z-index:1;max-width:960px;margin:0 auto}
-h1{font-size:28px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px}
-p.sub{font-size:15px;color:var(--muted)}
-h2{font-size:14px;font-weight:500;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
-a{color:#3b82f6;text-decoration:none;transition:color .15s}a:hover{color:#60a5fa}
+h1{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--neon)}
+h1 .blue{color:var(--blue)}
+p.sub{font-size:15px;color:var(--muted);margin-top:4px}
+h2{font-size:13px;font-weight:500;color:var(--neon);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;text-shadow:0 0 8px rgba(187,243,81,.3)}
+a{color:var(--blue);text-decoration:none;transition:all .2s}a:hover{color:var(--neon);text-shadow:0 0 8px var(--neon)}
 main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
-@keyframes blink{0%,100%{border-color:var(--success)}50%{border-color:transparent}}
-@keyframes slidein{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
-.cursor{border-right:2px solid var(--success);animation:blink .8s infinite;padding-right:2px}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px var(--neon)}50%{opacity:.6;box-shadow:0 0 12px var(--neon)}}
+@keyframes blink{0%,100%{border-color:var(--neon)}50%{border-color:transparent}}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:border-color .3s}
-.panel:hover{border-color:rgba(12,92,171,.4)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:all .3s}
+.panel:hover{border-color:rgba(187,243,81,.2);box-shadow:0 0 20px rgba(187,243,81,.05)}
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
 .stat-row:last-child{border-bottom:none}
-.stat-label{font-size:13px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.stat-label{font-size:13px;color:var(--muted)}
 .stat-label.full{max-width:none}
-.stat-value{font-size:14px;font-weight:500;text-align:right;color:#fff}
+.stat-value{font-size:14px;font-weight:500;text-align:right;color:var(--text)}
 .price-flash{animation:fadein .4s ease-out}
-.tx-list{font-size:13px}.tx-list a{display:block;padding:4px 0;color:#ddd;font-family:monospace;transition:color .15s}
-.tx-list a:hover{color:#3b82f6;text-decoration:none}
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:12px}
-.badge-on{background:rgba(16,185,129,.12);color:var(--success)}
-.dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
-.btn:hover{background:var(--primary);border-color:var(--primary)}
-.term{font-family:monospace;font-size:13px;color:var(--success);padding:16px 20px;background:rgba(12,92,171,.04);border:1px solid rgba(12,92,171,.12);border-radius:6px;margin-bottom:24px}
+.tx-list{font-size:13px}.tx-list a{display:block;padding:5px 8px;color:var(--muted);font-family:monospace;border-radius:4px;transition:all .2s}
+.tx-list a:hover{color:var(--neon);background:rgba(187,243,81,.05);text-shadow:0 0 6px var(--neon);text-decoration:none}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 12px;border-radius:12px}
+.badge-on{background:rgba(187,243,81,.1);color:var(--neon);border:1px solid rgba(187,243,81,.2)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 2s infinite}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.btn:hover{background:var(--blue);border-color:var(--blue);color:#000;box-shadow:0 0 12px rgba(0,188,255,.4)}
+.term{font-family:monospace;font-size:13px;color:var(--neon);padding:16px 20px;background:rgba(187,243,81,.03);border:1px solid rgba(187,243,81,.1);border-radius:6px;margin-bottom:24px;text-shadow:0 0 4px rgba(187,243,81,.4)}
+.cursor{border-right:2px solid var(--neon);animation:blink .8s infinite;padding-right:2px}
 .footer{border-top:1px solid var(--border);padding:24px 32px;text-align:center;font-size:12px;color:var(--muted)}
 @media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
 </style>
@@ -48,44 +50,50 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 <body>
 <header>
   <div>
-    <h1>Agora Prediction Agent</h1>
-    <p class="sub">Polymarket BTC 5-min &rarr; Arc Settlement</p>
+    <h1><span class="blue">Agora</span> Prediction Agent</h1>
+    <p class="sub">Polymarket BTC 5min &rarr; Arc Settlement</p>
   </div>
   <div style="display:flex;gap:8px">
-    <button class="btn" id="connect-btn" onclick="connectWallet()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 1 0 0 4h3a1 1 0 0 0 1-1v-2.5"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
-      Connect Wallet
-    </button>
+    <button class="btn" id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
     <button class="btn" id="disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect</button>
   </div>
 </header>
 
 <div class="hero">
   <div class="hero-content">
-    <div class="term">
-      <span id="typewriter" class="cursor"></span>
-    </div>
+    <div class="term"><span id="typewriter" class="cursor"></span></div>
   </div>
 </div>
 
 <main>
   <div id="wallet-info" style="display:none;margin-bottom:24px" class="panel">
     <div class="stat-row"><span class="stat-label full">Connected</span><span style="font-family:monospace;font-size:12px;color:var(--muted)" id="wallet-addr">—</span></div>
-    <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--success)" id="wallet-bal">—</span></div>
+    <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--neon)" id="wallet-bal">—</span></div>
   </div>
 
   <h2>Agent Status</h2>
   <div class="grid">
     <div class="panel">
       <div class="stat-row"><span class="stat-label">Agent ID</span><span class="stat-value">ERC-8004 #7824</span></div>
-      <div class="stat-row"><span class="stat-label">Chain</span><span class="stat-value">Arc Testnet</span></div>
-      <div class="stat-row"><span class="stat-label">Strategy</span><span class="stat-value">Multi-combo + Auto-hedge</span></div>
+      <div class="stat-row"><span class="stat-label">Chain</span><span class="stat-value">Arc Testnet (5042002)</span></div>
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value"><span class="badge badge-on"><span class="dot"></span>Running</span></span></div>
     </div>
     <div class="panel">
       <div class="stat-row"><span class="stat-label">BTC Price</span><span class="stat-value" id="btc">—</span></div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value"><span class="badge badge-on"><span class="dot"></span>Running</span></span></div>
+      <div class="stat-row"><span class="stat-label">Arc Mints</span><span class="stat-value">5 verified onchain</span></div>
       <div class="stat-row"><span class="stat-label">ERC-8004 Agents</span><span class="stat-value">11 registered</span></div>
     </div>
+  </div>
+
+  <h2 style="margin-top:32px">Strategy</h2>
+  <div class="panel">
+    <div class="stat-row"><span class="stat-label full">Combo 1</span><span class="stat-value">Time&lt;2min, Price 0.8–0.97, BTC&gt;$30</span></div>
+    <div class="stat-row"><span class="stat-label full">Combo 2</span><span class="stat-value">Time&lt;3min, Price 0.8–0.97, BTC&gt;$55</span></div>
+    <div class="stat-row"><span class="stat-label full">Combo 3</span><span class="stat-value">Time&lt;1min, Price 0.7–0.97, BTC&gt;$15</span></div>
+    <div class="stat-row"><span class="stat-label full">Hedge</span><span class="stat-value">Auto @ 0.95, Safety Score &lt; 50</span></div>
+    <div class="stat-row"><span class="stat-label full">Stop Loss</span><span class="stat-value">-20% after 5min hold</span></div>
+    <div class="stat-row"><span class="stat-label full">Take Profit</span><span class="stat-value">+10%</span></div>
+    <div class="stat-row"><span class="stat-label full">Data Sources</span><span class="stat-value">Binance WS + Chainlink Oracle</span></div>
   </div>
 
   <h2 style="margin-top:32px">Arc Mint Proofs</h2>
@@ -99,16 +107,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     </div>
   </div>
 
-  <h2 style="margin-top:32px">Strategy</h2>
-  <div class="panel">
-    <div class="stat-row"><span class="stat-label full">Combo 1</span><span class="stat-value">Time&lt;2min, Price 0.8–0.97, BTC&gt;$30</span></div>
-    <div class="stat-row"><span class="stat-label full">Combo 2</span><span class="stat-value">Time&lt;3min, Price 0.8–0.97, BTC&gt;$55</span></div>
-    <div class="stat-row"><span class="stat-label full">Combo 3</span><span class="stat-value">Time&lt;1min, Price 0.7–0.97, BTC&gt;$15</span></div>
-    <div class="stat-row"><span class="stat-label full">Hedge</span><span class="stat-value">Auto @ 0.95, Safety Score &lt; 50</span></div>
-    <div class="stat-row"><span class="stat-label full">Stop Loss</span><span class="stat-value">-20% after 5min hold</span></div>
-    <div class="stat-row"><span class="stat-label full">Take Profit</span><span class="stat-value">+10%</span></div>
-    <div class="stat-row"><span class="stat-label full">Data</span><span class="stat-value">Binance WS + Chainlink Oracle</span></div>
-  </div>
+  <h2 style="margin-top:32px">Links</h2>
   <div class="panel">
     <div class="tx-list">
       <a href="https://github.com/HUhonh/agora-prediction-agent" target="_blank">GitHub</a>
@@ -126,23 +125,20 @@ const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name
 let provider=null,signer=null,address=null;
 
 async function connectWallet(){
-  if(!window.ethereum){alert('Please install MetaMask');return}
+  if(!window.ethereum){alert('Install MetaMask');return}
   try{
     provider=new ethers.BrowserProvider(window.ethereum);
     await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:ARC_CHAIN.chainId}]}).catch(()=>
       window.ethereum.request({method:'wallet_addEthereumChain',params:[ARC_CHAIN]})
     );
-    signer=await provider.getSigner();
-    address=await signer.getAddress();
-    const bal=await provider.getBalance(address);
+    signer=await provider.getSigner();address=await signer.getAddress();
     document.getElementById('wallet-addr').textContent=address.slice(0,6)+'...'+address.slice(-4);
-    document.getElementById('wallet-bal').textContent=(Number(ethers.formatEther(bal)).toFixed(4))+' USDC';
+    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
     document.getElementById('wallet-info').style.display='block';
     document.getElementById('connect-btn').style.display='none';
     document.getElementById('disconnect-btn').style.display='inline-flex';
   }catch(e){console.error(e)}
 }
-
 function disconnectWallet(){
   provider=null;signer=null;address=null;
   document.getElementById('wallet-info').style.display='none';
@@ -152,23 +148,11 @@ function disconnectWallet(){
 
 let lastPrice=0;
 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()})
-  .catch(()=>document.getElementById('btc').textContent='—');
+  .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()}).catch(()=>document.getElementById('btc').textContent='—');
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{
-    const p=parseInt(d.price);const el=document.getElementById('btc');
-    el.textContent='$'+p.toLocaleString();
-    if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}
-    lastPrice=p;
-  }).catch(()=>{}),10000);
+  .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function typeWriter(){
-  const el=document.getElementById('typewriter');
-  const text='> agent.run() — 监控 Polymarket BTC 5min 预测市场，三档策略自动执行';
-  let i=0;
-  function type(){if(i<text.length){el.textContent+=text.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else{el.classList.remove('cursor')}}
-  type();
-})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — 监控 Polymarket BTC 5min 预测市场，三档策略自动执行';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 </script>
 </body>
 </html>
