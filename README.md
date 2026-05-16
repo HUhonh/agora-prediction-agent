@@ -6,29 +6,33 @@ Built for [Agora Agents Hackathon](https://agora.thecanteenapp.com/) RFB 02 — 
 
 ---
 
-## How it works
-
-Uses USDC through Circle's developer stack across the full trade lifecycle:
+## Settlement Flow (Arc → Polygon → Arc)
 
 ```
-                   CCTP Bridge
-     Arc (资金池) ──────────▶ Polygon (交易)
-          ▲                       │
-          │    CCTP Bridge        │ 盈利
-          └───────────────────────┘ 回流
+Polygon (Polymarket)               Arc (Settlement)
+─────────────────────              ─────────────────
+                                 
+  Binance WS → Kelly strategy  →   CCTP Bridge (verified)
+         │                         │
+         ▼                         ▼
+  Polymarket CLOB order        ERC-20 Mint Proof
+         │                         │
+         ▼                         ▼
+  +$0.18 PnL (Live)           arcscan.app/tx/...
 
-     链上身份 (Arc)
-     ├─ ERC-8004 Agent NFT
-     ├─ ReputationRegistry (交易记录)
-     └─ ValidationRegistry (验证)
+  Every trade → 1 ATT token minted on Arc ✅
 ```
 
-### Trade flow
+### Trade → Arc Proof
 
-1. **Fund** — USDC bridges from Arc to Polygon via CCTP
-2. **Trade** — Binance WebSocket BTC price → Kelly sizing → Polymarket CLOB order
-3. **Settle** — Profit bridges back from Polygon to Arc via CCTP
-4. **Record** — Every trade logged to Arc ERC-8004 Agent for onchain reputation
+Each Polymarket trade mints an ERC-20 token on Arc as immutable proof:
+
+```
+[Arc] TX: https://testnet.arcscan.app/tx/1934e977ac34...
+[Arc] TX: https://testnet.arcscan.app/tx/6b69a50e51b4...
+[Arc] TX: https://testnet.arcscan.app/tx/9eaf948cb9a8...
+[Arc] TX: https://testnet.arcscan.app/tx/a8d51433db4c...
+```
 
 ---
 
@@ -37,21 +41,21 @@ Uses USDC through Circle's developer stack across the full trade lifecycle:
 ```
 Binance WS ──┐
 (BTC price)  │    ┌──────────────┐     ┌─────────────┐
-             ├───▶│ 3-tier Kelly │────▶│ Polymarket  │
+             ├───▶│ Multi-combo  │────▶│ Polymarket  │
 Chainlink ───┘    │ strategy     │     │ CLOB v2     │
 (oracle)          └──────────────┘     └─────────────┘
                                               │
                               ┌───────────────┘
                               ▼
                     ┌──────────────────┐
-                    │ Polygon redeem   │
-                    │ (onchain)        │
+                    │ Arc ERC-20 Mint  │  ← 每笔交易铸 ATT
+                    │ (onchain proof)  │
                     └──────────────────┘
                               │
                               ▼
                     ┌──────────────────┐
-                    │ Arc ERC-8004     │
-                    │ (identity/log)   │
+                    │ ERC-8004 Agent   │
+                    │ (identity/reputation)│
                     └──────────────────┘
 ```
 
@@ -59,85 +63,55 @@ Chainlink ───┘    │ strategy     │     │ CLOB v2     │
 
 ## Strategy
 
-3-tier Kelly Criterion based on signal strength:
+Multi-combo trading with stop-loss/take-profit:
 
-| Tier | Signal | Kelly | When |
-|------|--------|-------|------|
-| 3 | > 70 | 1.5x | Large BTC swing |
-| 2 | 40-70 | 1x | Normal signal |
-| 1 | < 40 | 0.5x | Weak signal |
-
-### Entry rules
-
-1. YES price between 0.10-0.90
-2. Time remaining: 1:00-4:20
-3. BTC change > $5
-4. Safety score > 30
-
-### Auto-hedge
-
-When safety score drops below 50, opens opposite position at 50% size.
+| Combo | Conditions | Size |
+|-------|-----------|------|
+| 1 | Time<2min, Price 0.8-0.97, BTC>30 | 3.6 |
+| 2 | Time<3min, Price 0.8-0.97, BTC>55 | 3.6 |
+| 3 | Time<1min, Price 0.7-0.97, BTC>15 | 3.6 |
+| Hedge | Auto-hedge at 0.95 | 1.2 |
 
 ---
 
-## Circle tools used
+## Circle Tools Used
 
-| Tool | What for | Status |
-|------|----------|--------|
-| USDC | Settlement + gas | ✅ |
-| CCTP | Arc ↔ Polygon bridge | ✅ 11 transfers |
-| ERC-8004 | Agent identity onchain | ✅ 11 agents |
-| ERC-8183 | Job lifecycle (escrow) | ✅ 11 jobs |
-| SDK | Wallet + Entity Secret | ✅ |
-| Gateway | Cross-chain balance (planned) | 🔮 |
-
----
-
-## Onchain records (Arc Testnet)
-
-```
-IdentityRegistry    0x8004A818...494BD9e   Agent NFTs
-ReputationRegistry  0x8004B663...88713    Trade records
-TokenMessengerV2    0x8FE6B999...2542DAA   CCTP bridge
-AgenticCommerce     0x0747EEf0...e4583     ERC-8183 jobs
-```
+| Tool | What for | Proof |
+|------|----------|-------|
+| USDC | Settlement | Arc wallet balance |
+| CCTP | Bridge path | 11 verified transfers |
+| ERC-8004 | Agent identity | 11 agents registered |
+| ERC-8183 | Job lifecycle | 11 jobs completed |
+| ERC-20 Mint | Trade proof | 5+ real-time txs |
+| Circle SDK | Wallet setup | SCA wallet created |
 
 All on [testnet.arcscan.app](https://testnet.arcscan.app)
 
 ---
 
-## Run
+## Live Trading
+
+- **Platform**: Polymarket BTC 5-min
+- **Trades**: 5+ verified on Arc
+- **PnL**: +$0.18 USDC
+- **Proof**: Attachments on arcscan
+
+---
+
+## Quick Start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # fill in your keys
-python agent.py
+cp .env.example .env   # fill in keys
+python trading_agent.py          # v2 - optimized entry
+python trading_agent_v1.py       # v1 - with stop-loss
 ```
 
-### Env vars
-
-| Var | Required | For |
-|-----|----------|-----|
-| `PRIVATE_KEY` | Yes | Polymarket wallet |
-| `FUNDER_ADDRESS` / `PROXY_ADDRESS` | Yes | Wallet address |
-| `POLY_BUILDER_API_KEY` | Optional | Fee share |
-| `POLY_BUILDER_SECRET` | Optional | Fee share |
-| `POLY_BUILDER_PASSPHRASE` | Optional | Fee share |
-
 ---
 
-## Traction
+## Author
 
-- **11 agents** registered on Arc (ERC-8004)
-- **11 CCTP bridges** completed
-- **11 ERC-8183 jobs** completed
-- **Live trading** on Polymarket BTC 5-min markets
-
----
-
-## Links
-
-- Author: [@HUhonh](https://github.com/HUhonh)
+- GitHub: [HUhonh](https://github.com/HUhonh)
 - X: [@huhongshan8](https://x.com/huhongshan8)
 - Discord: @klortoy
 

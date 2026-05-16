@@ -1,12 +1,8 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Polymarket BTC市场监控仪表盘 - V2首单优化版
-基于原5分钟带止损功能版本，修改首单买入条件为：
-  1. 价格 <= 0.30
-   2. 剩余时间 4分20秒到3分钟 (180-260秒)
-  3. BTC价格变化 <= 40
-   4. 剩余时间 < 3分钟时禁止首单买入
-其他功能（止盈止损、对冲、赎回、CLOB客户端缓存）与原版保持一致
+Polymarket BTC市场监控仪表盘 - WebSocket最终版
+使用WebSocket实时获取BTC价格变化和up/down价格，确保每秒返回查询结果
+集成了赎回操作功能，在检测到切换下一个市场后的第五分钟开始全部赎回操作
 """
 
 import time
@@ -24,9 +20,6 @@ import websocket
 import ssl
 import threading
 
-# UTF-8 encoding for Windows
-sys.stdout.reconfigure(encoding='utf-8')
-
 # 下单相关导入
 from py_clob_client_v2.client import ClobClient
 from py_clob_client_v2.clob_types import OrderArgs, OrderType
@@ -43,29 +36,24 @@ from py_builder_relayer_client.models import SafeTransaction, OperationType
 # 加载环境变量
 load_dotenv()
 
+# UTF-8 encoding for Windows
+sys.stdout.reconfigure(encoding='utf-8')
+
 # ============================================================
 # Arc 集成 (Agora Agents Hackathon)
-# 资金路径: Arc --CCTP--> Polygon 交易 --CCTP--> Arc 回流
-# 链上身份: ERC-8004 Agent NFT + ReputationRegistry
+# 交易→Arc 证明：每笔 Polymarket 交易铸造 1 个 ERC-20 Token
 # ============================================================
-ARC_RPC_URL = "https://rpc.testnet.arc.network"  # 主 RPC，非 blockdaemon
+ARC_RPC_URL = "https://rpc.testnet.arc.network"
 ARC_CHAIN_ID = 5042002
 AGENT_ID = 7824
-# Arc 合约
-USDC_ARC = "0x3600000000000000000000000000000000000000"       # 原生USDC (18 decimals)
-USDC_ERC20 = "0x3600000000000000000000000000000000000000"     # ERC-20接口 (6 decimals)
-TOKEN_MESSENGER = "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA"  # CCTP V2
+TOKEN_MESSENGER = "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA"
 IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e"
 REPUTATION_REGISTRY = "0x8004B663056A597Dffe9eCcC1965A193B7388713"
-ARC_AGENTS = [7824,7825,7826,7827,7839,7828,7829,7830,7831,7840,7841]
+MINT_CONTRACT = "0x344e47e528925846016f306dd4efB19beC3011CD"
 
-# 结算追踪
 _settlement_tracker = {
-    "total_bridged_out": 0.0,
-    "total_bridged_back": 0.0,
-    "total_fees_generated": 0.0,
     "trades_recorded": 0,
-    "arc_tx_hashes": [],  # 所有 Arc 铸造 tx hash
+    "arc_tx_hashes": [],
 }
 
 _arc_w3 = None
@@ -75,64 +63,23 @@ def get_arc_w3():
         _arc_w3 = Web3(Web3.HTTPProvider(ARC_RPC_URL))
     return _arc_w3
 
-def cctp_bridge_to_polygon(amount_usdc=1.0):
-    """
-    资金部署: Arc → Polygon via CCTP
-    调用 TokenMessengerV2.depositForBurn()
-    实际桥接 USDC 从 Arc 测试网到目标链
-    """
-    try:
-        w3 = get_arc_w3()
-        # depositForBurn v2 signature (7参数, 已验证成功)
-        bridge_amount = int(amount_usdc * 1e6)  # 6 decimals for ERC-20
-        mint_recipient = "0x" + "0".zfill(64)   # 目标地址 bytes32 占位
-        dest_caller = "0x" + "0".zfill(64)
-        
-        abi = [{"inputs":[
-            {"name":"amount","type":"uint256"},{"name":"destinationDomain","type":"uint32"},
-            {"name":"mintRecipient","type":"bytes32"},{"name":"burnToken","type":"address"},
-            {"name":"destinationCaller","type":"bytes32"},{"name":"maxFee","type":"uint256"},
-            {"name":"minFinalityThreshold","type":"uint32"}
-        ],"name":"depositForBurn","outputs":[{"name":"nonce","type":"uint64"}],"stateMutability":"nonpayable","type":"function"}]
-        
-        contract = w3.eth.contract(address=w3.to_checksum_address(TOKEN_MESSENGER), abi=abi)
-        gas_est = contract.functions.depositForBurn(
-            bridge_amount, 0, mint_recipient, w3.to_checksum_address(USDC_ERC20),
-            dest_caller, 500, 1000
-        ).estimate_gas({'from': w3.to_checksum_address("0x1E17628df3a0c079884526cA026952DB70157C90")})
-        
-        return {
-            "status": "ready",
-            "amount": amount_usdc,
-            "gas_estimate": gas_est,
-            "msg": f"CCTP bridge: {amount_usdc} USDC Arc → Polygon"
-        }
-    except Exception as e:
-        # 测试网阶段，bridge 可能在非交易时段不可用
-        return {"status": "design", "msg": f"CCTP bridge path confirmed, gas={getattr(e,'args',[str(e)])[0] if hasattr(e,'args') else str(e)[:60]}"}
-
-def record_trade_on_chain(side, size, price, btc_price):
-    """
-    交易→Arc 证明：每笔 Polymarket 交易铸造 1 个 ERC-20 Token
-    """
+def record_trade_on_chain(side, size, price, btc_price=0):
+    """交易→Arc 证明：铸造 1 个 ERC-20 Token"""
     _settlement_tracker["trades_recorded"] += 1
     try:
         w3 = get_arc_w3()
         pk = os.getenv("ARC_PRIVATE_KEY", "")
         if not pk: return None
-
         from_addr = w3.to_checksum_address("0x1E17628df3a0c079884526cA026952DB70157C90")
-        contract_addr = w3.to_checksum_address("0x344e47e528925846016f306dd4efB19beC3011CD")
-        
+        contract_addr = w3.to_checksum_address(MINT_CONTRACT)
         abi = [{"inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}],
                 "name":"mint","outputs":[],"stateMutability":"nonpayable","type":"function"}]
         contract = w3.eth.contract(address=contract_addr, abi=abi)
-
         gas_price = int(w3.eth.gas_price * 3)
         nonce = w3.eth.get_transaction_count(from_addr)
         built = contract.functions.mint(from_addr, 1).build_transaction({
-            'from': from_addr, 'nonce': nonce,
-            'chainId': ARC_CHAIN_ID, 'gas': 100000, 'gasPrice': gas_price
+            'from': from_addr, 'nonce': nonce, 'chainId': ARC_CHAIN_ID,
+            'gas': 100000, 'gasPrice': gas_price
         })
         signed = w3.eth.account.sign_transaction(built, pk)
         txh = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -149,18 +96,23 @@ def record_trade_on_chain(side, size, price, btc_price):
     except:
         return None
 
-def get_settlement_summary():
-    """获取 Arc 结算概览（用于 hackathon 展示）"""
-    w3 = get_arc_w3()
-    return {
-        **_settlement_tracker,
-        "agent_id": AGENT_ID,
-        "arc_chain_id": ARC_CHAIN_ID,
-        "bridge_contract": TOKEN_MESSENGER,
-        "identity_nft": f"Agent #{AGENT_ID} on IdentityRegistry",
-        "explorer": f"https://testnet.arcscan.app/address/{IDENTITY_REGISTRY}",
-        "current_block": w3.eth.block_number,
-    }
+def print_arc_summary():
+    """打印 Arc 结算概览"""
+    print("\n" + "="*60)
+    print("[Arc] 结算概览 (Agora Agents Hackathon)")
+    print("="*60)
+    print(f"  Agent ID: {AGENT_ID}")
+    print(f"  Arc Chain: {ARC_CHAIN_ID}")
+    print(f"  铸造合约: {MINT_CONTRACT}")
+    print(f"  交易记录数: {_settlement_tracker['trades_recorded']}")
+    tx_list = _settlement_tracker.get('arc_tx_hashes', [])
+    if tx_list:
+        print(f"\n  Arc 铸造证明 Tx ({len(tx_list)} 笔):")
+        for i, txh in enumerate(tx_list, 1):
+            print(f"    {i}. https://testnet.arcscan.app/tx/{txh}")
+    else:
+        print(f"  铸造证明 Tx: 无")
+    print("="*60)
 
 # 【新增】全局CLOB客户端缓存，避免每次下单重新初始化（耗时1-3秒）
 _cached_clob_client = None
@@ -242,7 +194,7 @@ RTDS_SUBSCRIBE_MESSAGE = {
     "action": "subscribe",
     "subscriptions": [
         {
-            "topic": "crypto_prices_chainlink", 
+            "topic": "crypto_prices_chainlink",                                                                                                                                                    
             "type": "*",
             "filters": "{\"symbol\":\"btc/usd\"}"
         }
@@ -253,7 +205,7 @@ RTDS_SUBSCRIBE_MESSAGE = {
 market_cache = {
     'data': None,
     'timestamp': 0,
-    'cache_duration': 10  # 市场数据缓存10秒（省流量：从5秒改为10秒）
+    'cache_duration': 5  # 市场数据缓存5秒
 }
 
 # 赎回操作状态
@@ -295,14 +247,6 @@ market_state = {
     'last_price_update_times': {}  # 每个token_id的最后更新时间
 }
 
-# 价格加速度缓存（物理指标：速度=一阶导数，加速度=二阶导数）
-price_acceleration_cache = {
-    'price_history': {},   # token_id -> [(timestamp, price), ...]
-    'velocity': {},        # token_id -> 当前速度 (price/s)
-    'acceleration': {},    # token_id -> 当前加速度 (price/s²)
-    'max_history': 10      # 保留最近10个价格点
-}
-
 # 对冲组合状态
 hedge_state = {
     'first_order_triggered': False,  # 第一次下单是否已触发
@@ -314,6 +258,7 @@ hedge_state = {
     'hedge_orders_by_market': {},    # 按市场记录对冲订单状态
     'combo2_order_placed': False,    # 组合2是否已下单（如果组合2已下单，不再下组合1）
     'combo1_order_placed': False,    # 组合1是否已下单（如果组合1已下单，不再下组合3）
+    'combo3_order_placed': False,    # 组合3是否已下单
     'combo1_hedge_executed': False,  # 对冲组合1是否已执行（如果组合1已执行，不再执行组合2）
     'first_order_quantity': 0.0,     # 首单持仓数量（获取一次）
     'first_order_price': 0.0,        # 首单买入价格
@@ -377,7 +322,7 @@ class RTDSWebSocketManager:
                     http_proxy_host=PROXY_HOST,
                     http_proxy_port=PROXY_PORT,
                     proxy_type=PROXY_TYPE,
-                    ping_interval=60,  # 省流量：心跳从20秒改为60秒
+                    ping_interval=20,
                     ping_timeout=10,
                     reconnect=3
                 )
@@ -510,7 +455,7 @@ class MarketWebSocketManager:
                     http_proxy_host=PROXY_HOST,
                     http_proxy_port=PROXY_PORT,
                     proxy_type=PROXY_TYPE,
-                    ping_interval=60,  # 省流量：心跳从30秒改为60秒
+                    ping_interval=30,
                     ping_timeout=10,
                     reconnect=3
                 )
@@ -569,10 +514,6 @@ class MarketWebSocketManager:
                                 'last_update': time.time()
                             }
                             market_state['last_update_time'] = time.time()
-                            
-                            # 【价格加速度】更新物理指标
-                            if last_trade_price != 'N/A':
-                                update_price_acceleration(asset_id, last_trade_price)
             
             # 处理价格变化消息（包含best_bid和best_ask）
             elif isinstance(data, dict) and 'price_changes' in data:
@@ -599,10 +540,6 @@ class MarketWebSocketManager:
                                 'last_update': time.time()
                             }
                             market_state['last_update_time'] = time.time()
-                            
-                            # 【价格加速度】更新物理指标（仅观测，不触发交易）
-                            if price != 'N/A':
-                                update_price_acceleration(asset_id, price)
                             
                             # 只在价格有显著变化时显示日志（减少刷屏）
                             price_changed = (best_bid != old_best_bid or best_ask != old_best_ask)
@@ -631,10 +568,6 @@ class MarketWebSocketManager:
                             'last_update': time.time()
                         }
                     market_state['last_update_time'] = time.time()
-                    
-                    # 【价格加速度】更新物理指标（仅观测，不触发交易）
-                    if price != 'N/A':
-                        update_price_acceleration(asset_id, price)
                     
                     # 只在价格有显著变化时显示日志
                     old_price = market_state['prices'].get(asset_id, {}).get('last_price', 'N/A')
@@ -669,10 +602,6 @@ class MarketWebSocketManager:
                         'last_update': time.time()
                     }
                     market_state['last_update_time'] = time.time()
-                    
-                    # 【价格加速度】更新物理指标（仅观测，不触发交易）
-                    if last_trade_price != 'N/A':
-                        update_price_acceleration(asset_id, last_trade_price)
             
         except json.JSONDecodeError:
             # 忽略非JSON消息
@@ -996,103 +925,6 @@ def get_prices_from_api(token_ids, outcomes):
     
     return prices
 
-def update_price_acceleration(token_id, price, max_points=10):
-    """
-    【价格加速度】物理指标：计算价格的速度和加速度
-    速度 = 价格变化率 (一阶导数, price/s)
-    加速度 = 速度变化率 (二阶导数, price/s²)
-    
-    当加速度 > 0 且很大时：价格正在"加速上涨"（像火箭发射）
-    当加速度 < 0 且很大时：价格正在"加速下跌"（像自由落体）
-    """
-    try:
-        now = time.time()
-        price_val = float(price)
-        
-        history = price_acceleration_cache['price_history'].get(token_id, [])
-        history.append((now, price_val))
-        
-        # 只保留最近 N 个点
-        if len(history) > max_points:
-            history = history[-max_points:]
-        
-        price_acceleration_cache['price_history'][token_id] = history
-        
-        # 需要至少3个点才能计算加速度
-        if len(history) >= 3:
-            t3, p3 = history[-1]
-            t2, p2 = history[-2]
-            t1, p1 = history[-3]
-            
-            dt1 = t2 - t1
-            dt2 = t3 - t2
-            
-            if dt1 > 0 and dt2 > 0:
-                # 速度（price per second）
-                v1 = (p2 - p1) / dt1
-                v2 = (p3 - p2) / dt2
-                
-                # 加速度（velocity change per second）
-                dt_avg = (dt1 + dt2) / 2
-                a = (v2 - v1) / dt_avg
-                
-                price_acceleration_cache['velocity'][token_id] = v2
-                price_acceleration_cache['acceleration'][token_id] = a
-                return v2, a
-                
-    except Exception:
-        pass
-    
-    return 0.0, 0.0
-
-
-def get_price_acceleration(token_id):
-    """获取指定token的速度和加速度"""
-    v = price_acceleration_cache['velocity'].get(token_id, 0.0)
-    a = price_acceleration_cache['acceleration'].get(token_id, 0.0)
-    return v, a
-
-
-def get_acceleration_signal(token_id):
-    """
-    根据加速度生成交易信号
-    返回: (signal, description)
-    """
-    v, a = get_price_acceleration(token_id)
-    
-    # 信号强度阈值
-    HIGH_ACC = 0.01      # 强加速度
-    MED_ACC = 0.005      # 中等加速度
-    HIGH_VEL = 0.05      # 强速度
-    
-    if abs(a) < 0.001 and abs(v) < 0.01:
-        return "震荡", "价格和速度都接近零，市场震荡"
-    
-    # 价格上涨且加速上涨 -> 强势
-    if v > 0 and a > HIGH_ACC:
-        return "🚀强势", f"价格上涨且加速↑ 速度={v:+.4f}/s 加速度={a:+.4f}/s²"
-    
-    # 价格上涨但减速 -> 趋势衰竭
-    if v > 0 and a < -MED_ACC:
-        return "⚠️衰竭", f"价格上涨但减速↓ 速度={v:+.4f}/s 加速度={a:+.4f}/s²"
-    
-    # 价格下跌且加速下跌 -> 恐慌
-    if v < 0 and a < -HIGH_ACC:
-        return "🔥恐慌", f"价格下跌且加速↓ 速度={v:+.4f}/s 加速度={a:+.4f}/s²"
-    
-    # 价格下跌但减速 -> 可能反弹
-    if v < 0 and a > MED_ACC:
-        return "🔄反弹", f"价格下跌但减速↑ 速度={v:+.4f}/s 加速度={a:+.4f}/s²"
-    
-    # 匀速运动
-    if v > HIGH_VEL:
-        return "📈匀速涨", f"价格匀速上涨 速度={v:+.4f}/s"
-    if v < -HIGH_VEL:
-        return "📉匀速跌", f"价格匀速下跌 速度={v:+.4f}/s"
-    
-    return "中性", f"速度={v:+.4f}/s 加速度={a:+.4f}/s²"
-
-
 def get_prices(token_ids, outcomes):
     """获取价格（WebSocket优先，关闭HTTP回退以节省代理流量）"""
     current_time = time.time()
@@ -1186,26 +1018,28 @@ def calculate_safety_index(buy_direction, btc_current_price, btc_opening_price):
     return status, abs(delta), delta_pct, safety_score
 
 def check_trading_conditions(market_data, btc_current_price, btc_opening_price):
-    """
-    检查交易条件（V2简化版）
-    首单买入条件: 价格 <= 0.30 AND 剩余时间 4分20秒到3分钟 (180-260秒) AND BTC价格变化 <= 40
-    剩余时间 < 180秒时禁止首单买入
-    """
+    """检查交易条件"""
     if not market_data:
-        return [], False, None, 0, 0.0, 0.0, False, False, False, False, False, None, 0
+        return [], False, None, 0, 0.0, 0.0, False, False
     
     conditions_met = []
     time_left = market_data.get('time_left', 0)
     
-    # 计算BTC价格变化
-    btc_price_change_abs = abs(btc_current_price - btc_opening_price) if btc_opening_price > 0 else 0.0
-    btc_pct_change = (btc_price_change_abs / btc_opening_price) * 100 if btc_opening_price > 0 else 0.0
+    # 条件1: 剩余时间小于2分钟
+    time_condition_2min = time_left < 120  # 2分钟 = 120秒
+    conditions_met.append(("剩余时间 < 2分钟", time_condition_2min))
     
-    # 条件1: 有一方价格 <= 0.30
+    # 条件2: up或者down价格大于等于0.8并且小于0.97 (用于组合1)
     price_condition_met = False
-    low_price_outcome = None
-    low_price_value = 1.0
+    high_price_outcome = None
+    high_price_value = 0
     
+    # 条件8: up或者down价格大于等于0.7并且小于0.97 (用于组合3)
+    price_condition_met_combo3 = False
+    high_price_outcome_combo3 = None
+    high_price_value_combo3 = 0
+    
+    # 从WebSocket获取价格
     token_ids = market_data.get('token_ids', [])
     outcomes = market_data.get('outcomes', [])
     prices = get_prices_from_websocket(token_ids, outcomes)
@@ -1216,44 +1050,81 @@ def check_trading_conditions(market_data, btc_current_price, btc_opening_price):
             if buy_price and buy_price != 'N/A':
                 try:
                     price_float = float(buy_price)
-                    if price_float <= 0.30:
+                    # 组合1价格条件: ≥ 0.8 AND < 0.97
+                    if price_float >= 0.8 and price_float < 0.97:
                         price_condition_met = True
-                        if price_float < low_price_value:
-                            low_price_value = price_float
-                            low_price_outcome = outcome
+                        if price_float > high_price_value:
+                            high_price_value = price_float
+                            high_price_outcome = outcome
+                    
+                    # 组合3价格条件: ≥ 0.7 AND < 0.97
+                    if price_float >= 0.7 and price_float < 0.97:
+                        price_condition_met_combo3 = True
+                        if price_float > high_price_value_combo3:
+                            high_price_value_combo3 = price_float
+                            high_price_outcome_combo3 = outcome
                 except:
                     pass
     
-    conditions_met.append(("有一方价格 <= 0.30", price_condition_met))
+    conditions_met.append(("价格 ≥ 0.8 并且 < 0.97 (组合1)", price_condition_met))
+    conditions_met.append(("价格 ≥ 0.7 并且 < 0.97 (组合3)", price_condition_met_combo3))
     
-    # 条件2: 剩余时间在180秒到260秒之间（4分20秒到3分钟）
-    time_in_range = 180 <= time_left <= 260
-    conditions_met.append((f"剩余时间 4分20秒到3分钟 (当前: {int(time_left)}秒)", time_in_range))
+    # 条件3: BTC价格变化绝对值大于等于30
+    btc_change_condition_30 = False
+    btc_price_change_abs = 0.0
+    btc_pct_change = 0.0
     
-    # 条件3: BTC价格变化 <= 40
-    btc_change_ok = btc_price_change_abs <= 40
-    conditions_met.append((f"BTC价格变化 <= 40 (当前: {btc_price_change_abs:.2f})", btc_change_ok))
+    if btc_opening_price > 0:
+        price_change = btc_current_price - btc_opening_price
+        btc_price_change_abs = abs(price_change)
+        btc_pct_change = (price_change / btc_opening_price) * 100
+        btc_change_condition_30 = btc_price_change_abs >= 30
     
-    # 禁止条件: 剩余时间 < 180（小于3分钟禁止首单买入）
-    if time_left < 180:
-        conditions_met.append(("剩余时间 >= 3分钟 (⛔ 禁止买入)", False))
-    else:
-        conditions_met.append(("剩余时间 >= 3分钟", True))
+    conditions_met.append((f"BTC价格变化 ≥ 30 (当前: ${btc_price_change_abs:,.2f})", btc_change_condition_30))
     
-    # V2首单条件 = 价格<=0.30 AND 时间4分20秒到3分钟 AND BTC变化<=40
-    # 映射到 original_condition_met 保持兼容
-    original_condition_met = price_condition_met and time_in_range and btc_change_ok
-    new_condition_met = False
-    combo3_condition_met = False
-    price_condition_2_met = False
-    price_condition_met_combo3 = False
-    high_price_outcome_combo3 = None
-    high_price_value_combo3 = 0
+    # 条件4: BTC价格变化绝对值大于等于55
+    btc_change_condition_55 = False
+    if btc_opening_price > 0:
+        btc_change_condition_55 = btc_price_change_abs >= 55
     
-    return (conditions_met, price_condition_met, low_price_outcome, low_price_value, 
-            btc_price_change_abs, btc_pct_change, original_condition_met, new_condition_met, 
-            combo3_condition_met, price_condition_2_met, price_condition_met_combo3, 
-            high_price_outcome_combo3, high_price_value_combo3)
+    conditions_met.append((f"BTC价格变化 ≥ 55 (当前: ${btc_price_change_abs:,.2f})", btc_change_condition_55))
+    
+    # 条件5: 剩余时间小于3分钟
+    time_condition_3min = time_left < 180  # 3分钟 = 180秒
+    conditions_met.append(("剩余时间 < 3分钟", time_condition_3min))
+    
+    # 条件6: 剩余时间小于1分钟
+    time_condition_1min = time_left < 60 # 1分钟 = 60秒
+    conditions_met.append(("剩余时间 < 1分钟", time_condition_1min))
+    
+    # 条件7: BTC价格变化绝对值大于等于15
+    btc_change_condition_15 = False
+    if btc_opening_price > 0:
+        btc_change_condition_15 = btc_price_change_abs >= 15
+    
+    conditions_met.append((f"BTC价格变化 ≥ 15 (当前: ${btc_price_change_abs:,.2f})", btc_change_condition_15))
+    
+    # 检查三个交易条件组合
+    # 组合1: 原始条件 (剩余时间 < 2分钟 AND 价格 ≥ 0.8 AND < 0.97 AND BTC变化 > 30)
+    original_condition_met = time_condition_2min and price_condition_met and btc_change_condition_30
+    
+    # 组合2: 新增条件 (剩余时间 < 3分钟 AND 价格 ≥ 0.8 AND < 0.97 AND BTC变化 > 55)
+    price_condition_2_met = price_condition_met
+    
+    new_condition_met = time_condition_3min and btc_change_condition_55 and price_condition_2_met
+    
+    # 组合3: 新增条件 (剩余时间 < 1分钟 AND 价格 ≥ 0.7 AND < 0.97 AND BTC变化 > 15)
+    combo3_condition_met = time_condition_1min and price_condition_met_combo3 and btc_change_condition_15
+    
+    # 如果组合3条件满足，使用组合3的高价格结果
+    if combo3_condition_met and price_condition_met_combo3:
+        high_price_outcome = high_price_outcome_combo3
+        high_price_value = high_price_value_combo3
+    
+    # 任一条件满足即可下单
+    any_condition_met = original_condition_met or new_condition_met or combo3_condition_met
+    
+    return conditions_met, price_condition_met, high_price_outcome, high_price_value, btc_price_change_abs, btc_pct_change, original_condition_met, new_condition_met, combo3_condition_met, price_condition_2_met, price_condition_met_combo3, high_price_outcome_combo3, high_price_value_combo3
 
 def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_count, query_time):
     """显示所有信息"""
@@ -1367,37 +1238,6 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
             
             print(f"\n  更新状态: {status} ({timely_updates}/{total_tokens}个token及时更新)")
     
-    # 【价格加速度】物理指标显示（仅观测，不触发交易）
-    if token_ids:
-        print("\n📐 价格加速度 (物理指标)")
-        print("-"*40)
-        
-        for outcome, data in prices.items():
-            token_id = data.get('token_id', '')
-            if token_id:
-                v, a = get_price_acceleration(token_id)
-                signal, desc = get_acceleration_signal(token_id)
-                
-                # 格式化显示
-                v_str = f"{v:+.4f} /s"
-                a_str = f"{a:+.4f} /s^2"
-                
-                # 加速度条形图（用等号表示强度）
-                bar_len = min(int(abs(a) * 500), 10)
-                bar = "=" * bar_len
-                if a > 0:
-                    bar_dir = f"▶{bar:>10}"
-                elif a < 0:
-                    bar_dir = f"{bar:<10}◀"
-                else:
-                    bar_dir = "     -     "
-                
-                print(f"  {outcome}: {signal}")
-                print(f"    速度: {v_str}  加速度: {a_str}")
-                print(f"    力度: [{bar_dir}]")
-                if abs(a) >= 0.01:
-                    print(f"    ⚡ 注意: {desc}")
-    
     # 显示安全指标
     print("\n安全指标分析")
     print("="*60)
@@ -1421,7 +1261,7 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
         print("\n  建议: 市场波动较大，需谨慎交易")
     
     # 交易条件检查
-    conditions_met, price_condition_met, low_price_outcome, low_price_value, btc_change_abs, btc_pct_change, original_condition_met, new_condition_met, combo3_condition_met, price_condition_2_met, price_condition_met_combo3, high_price_outcome_combo3, high_price_value_combo3 = check_trading_conditions(
+    conditions_met, price_condition_met, high_price_outcome, high_price_value, btc_change_abs, btc_pct_change, original_condition_met, new_condition_met, combo3_condition_met, price_condition_2_met, price_condition_met_combo3, high_price_outcome_combo3, high_price_value_combo3 = check_trading_conditions(
         market_data, btc_current_price, btc_opening_price
     )
     
@@ -1434,56 +1274,101 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
     
     # 显示交易条件组合
     print("\n交易条件组合:")
-    print(f"  V2首单条件: 价格 <= 0.30 AND 剩余时间 4分20秒到3分钟 AND BTC变化 <= 40: {'✅ 满足' if original_condition_met else '❌ 不满足'}")
+    print(f"  组合1 (原始): 剩余时间 < 2分钟 AND 价格 ≥ 0.8 AND < 0.97 AND BTC变化 > 30: {'✅ 满足' if original_condition_met else '❌ 不满足'}")
+    print(f"  组合2 (新增): 剩余时间 < 3分钟 AND 价格 ≥ 0.8 AND < 0.97 AND BTC变化 > 55: {'✅ 满足' if new_condition_met else '❌ 不满足'}")
+    print(f"  组合3 (新增): 剩余时间 < 1分钟 AND 价格 ≥ 0.7 AND < 0.97 AND BTC变化 > 15: {'✅ 满足' if combo3_condition_met else '❌ 不满足'}")
     
-    # 显示禁止买入提示
-    if time_left < 180:
-        print(f"\n⛔ 剩余时间 {int(time_left)}秒 < 3分钟，已禁止首单买入")
+    # 显示BTC价格变化信息（包含详细调试）
+    price_change = btc_current_price - btc_opening_price
+    price_change_sign = "+" if price_change >= 0 else ""
+    pct_change_sign = "+" if btc_pct_change >= 0 else ""
+    print(f"\nBTC价格变化: {price_change_sign}${abs(price_change):,.2f} ({pct_change_sign}{abs(btc_pct_change):.2f}%)")
     
-    # 如果满足V2首单条件，执行下单
-    any_condition_met = original_condition_met
+    # 调试信息：显示BTC变化计算的详细信息
+    print(f"  [调试] BTC开盘价: ${btc_opening_price:,.2f}")
+    print(f"  [调试] BTC当前价: ${btc_current_price:,.2f}")
+    print(f"  [调试] BTC变化绝对值: ${btc_change_abs:,.2f}")
+    print(f"  [调试] 组合2条件检查:")
+    print(f"    - 剩余时间 < 3分钟: {time_left < 180} (剩余时间: {time_left}秒)")
+    print(f"    - 价格 ≥ 0.8 并且 < 0.97: {price_condition_met}")
+    print(f"    - BTC变化 > 55: {btc_change_abs >= 55} (阈值: 55, 实际: ${btc_change_abs:,.2f})")
+    print(f"  [调试] 组合2最终结果: {new_condition_met}")
+    
+    # 如果满足任一交易条件组合，显示交易建议并执行下单
+    any_condition_met = original_condition_met or new_condition_met or combo3_condition_met
     if any_condition_met:
-        print("\n🚨 V2首单交易条件满足!")
+        print("\n🚨 交易条件满足!")
         
-        # 【关键修改】检查是否已经有首单或已止盈止损，禁止重复下单
+        # 【关键修复】检查是否已经有首单，禁止重复下单（使用first_order_triggered，只在execute_order成功时置True）
         if hedge_state['first_order_triggered']:
             print(f"  ⛔ 已有首单（方向: {hedge_state['first_order_outcome']}），禁止重复下单")
-            if hedge_state['tp_sl_executed']:
-                print(f"  ⛔ 已执行止盈止损，禁止任何新订单（仅允许对冲）")
-            else:
-                print(f"  ⛔ 首单仍在持仓中，禁止下反方向订单")
-        elif hedge_state['tp_sl_executed']:
-            print(f"  ⛔ 已执行止盈止损，禁止下新订单（仅允许对冲）")
+            if original_condition_met:
+                print(f"  组合1条件满足 → 跳过")
+            if new_condition_met:
+                print(f"  组合2条件满足 → 跳过")
+            if combo3_condition_met:
+                print(f"  组合3条件满足 → 跳过")
         else:
-            # V2版本简化为单一条件，不再分组合1/2/3
-            if low_price_outcome:
-                print(f"  低价格结果: {low_price_outcome} ({low_price_value:.3f})")
-                print(f"  建议: 买入 {low_price_outcome} (价格 <= 0.30)")
-            else:
-                # 如果没有价格数据，默认选择Up
-                low_price_outcome = "Up"
-                print(f"  建议: 买入 {low_price_outcome} (默认方向)")
-            
-            # 执行下单
-            order_result = execute_order(market_data, low_price_outcome, low_price_value, btc_change_abs)
-            print(f"\n📤 下单结果: {order_result}")
-            
-            # 记录首单已下单（兼容原有状态字段）
-            if "下单成功" in str(order_result):
-                hedge_state['combo1_order_placed'] = True
-                print(f"  记录: 首单已下单")
-                # Arc: 铸造交易证明代币
-                try:
-                    arc_tx = record_trade_on_chain(
-                        low_price_outcome, low_price_value, 
-                        market_state['prices'].get('btc_price', 0)
-                    )
-                    if arc_tx:
-                        print(f"  [Arc] 铸造证明: https://testnet.arcscan.app/tx/{arc_tx}")
+            # 确定使用哪个条件组合（按优先级：组合1 > 组合2 > 组合3）
+            if original_condition_met:
+                print(f"  满足条件: 组合1 (原始条件)")
+                print(f"  高价格结果: {high_price_outcome} ({high_price_value:.3f})")
+                print(f"  建议: 考虑买入 {high_price_outcome} (价格偏高)")
+                
+                # 执行下单，传递BTC变化指标
+                order_result = execute_order(market_data, high_price_outcome, high_price_value, btc_change_abs)
+                print(f"\n📤 下单结果: {order_result}")
+                
+                # 记录组合1下单状态（只有成功才标记）
+                if "下单成功" in order_result:
+                    hedge_state['combo1_order_placed'] = True
+                    print(f"  记录: 组合1已下单，标记为已下单状态")
+                else:
+                    print(f"  警告: 下单失败，不标记为已下单状态")
+            elif new_condition_met:
+                print(f"  满足条件: 组合2 (新增条件: 剩余时间 < 3分钟 AND 价格 ≥ 0.8 AND < 0.97 AND BTC变化 > 55)")
+                print(f"  调试: combo2_order_placed状态 = {hedge_state['combo2_order_placed']}")
+                
+                # 检查是否已经下过组合2订单
+                if hedge_state['combo2_order_placed']:
+                    print(f"  注意: 组合2已下单，不再重复下单")
+                    print(f"  组合2下单状态: 已下单")
+                else:
+                    # 对于新条件，选择价格较高的方向
+                    if high_price_outcome:
+                        print(f"  高价格结果: {high_price_outcome} ({high_price_value:.3f})")
+                        print(f"  建议: 考虑买入 {high_price_outcome}")
                     else:
-                        print(f"  [Arc] 铸造跳过(网络)")
-                except:
-                    pass
+                        # 如果没有价格数据，默认选择Up
+                        high_price_outcome = "Up"
+                        print(f"  建议: 考虑买入 {high_price_outcome} (默认方向)")
+                    
+                    # 执行下单，传递BTC变化指标
+                    print(f"  调试: 准备执行下单，方向={high_price_outcome}, 价格={high_price_value}")
+                    order_result = execute_order(market_data, high_price_outcome, high_price_value, btc_change_abs)
+                    print(f"\n📤 下单结果: {order_result}")
+                    
+                    # 记录组合2下单状态
+                    if "下单成功" in order_result:
+                        hedge_state['combo2_order_placed'] = True
+                        print(f"  记录: 组合2已下单，标记为已下单状态")
+                    else:
+                        print(f"  警告: 下单失败，不标记为已下单状态")
+            elif combo3_condition_met:
+                print(f"  满足条件: 组合3 (新增条件: 剩余时间 < 1分钟 AND 价格 ≥ 0.7 AND < 0.97 AND BTC变化 > 15)")
+                print(f"  高价格结果: {high_price_outcome} ({high_price_value:.3f})")
+                print(f"  建议: 考虑买入 {high_price_outcome}")
+                
+                # 执行下单，传递BTC变化指标
+                order_result = execute_order(market_data, high_price_outcome, high_price_value, btc_change_abs)
+                print(f"\n📤 下单结果: {order_result}")
+                
+                # 记录组合3下单状态（只有成功才标记）
+                if "下单成功" in order_result:
+                    hedge_state['combo3_order_placed'] = True
+                    print(f"  记录: 组合3已下单，标记为已下单状态")
+                else:
+                    print(f"  警告: 下单失败，不标记为已下单状态")
     
     # 获取当前市场slug（提前获取，用于后续使用）
     current_market_slug = market_data.get('slug', '') if market_data else ''
@@ -1540,27 +1425,25 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
             else:
                 print(f"  状态: 未对冲 ⏳")
             
-            # 检查止盈止损条件
-            # 只有在同一市场、未对冲、未执行过止盈止损的情况下才检查
-            if (current_market_slug == hedge_state['first_order_market_slug'] and 
-                not market_hedge_placed and 
-                not hedge_state['tp_sl_executed']):
-                
-                print(f"\n  📊 止盈止损检查 (目标: 止盈+10%, 止损-20%且持续15秒)")
-                triggered, executed, message = check_and_execute_tp_sl(
-                    market_data, current_first_price, first_outcome, first_quantity, first_price
-                )
-                
-                if triggered:
-                    if executed:
-                        print(f"  ✅ {message}")
-                    else:
-                        print(f"  ⚠️ {message}")
-                # 否则只是监控中，不重复打印（函数内部已经处理）
-            elif hedge_state['tp_sl_executed']:
-                print(f"  止盈止损状态: 已执行 ✅")
-            elif market_hedge_placed:
-                print(f"  止盈止损状态: 已对冲，跳过止盈止损检查")
+            # 【已注释】止盈止损功能
+            # if (current_market_slug == hedge_state['first_order_market_slug'] and 
+            #     not market_hedge_placed and 
+            #     not hedge_state['tp_sl_executed']):
+            #     
+            #     print(f"\n  📊 止盈止损检查 (目标: 止盈+10%, 止损-20%且持续15秒)")
+            #     triggered, executed, message = check_and_execute_tp_sl(
+            #         market_data, current_first_price, first_outcome, first_quantity, first_price
+            #     )
+            #     
+            #     if triggered:
+            #         if executed:
+            #             print(f"  ✅ {message}")
+            #         else:
+            #             print(f"  ⚠️ {message}")
+            # elif hedge_state['tp_sl_executed']:
+            #     print(f"  止盈止损状态: 已执行 ✅")
+            # elif market_hedge_placed:
+            #     print(f"  止盈止损状态: 已对冲，跳过止盈止损检查")
         else:
             print(f"  首单方向: {first_outcome}")
             print(f"  持仓数量: {first_quantity:.4f}")
@@ -1611,16 +1494,16 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
                 # 检查是否已经执行过组合1对冲
                 combo1_executed = hedge_state.get('combo1_hedge_executed', False)
                 
-                # 组合1：安全分数 < -0.01 AND 反方向价格 >= 0.80 AND 剩余时间 <= 20秒
+                # 组合1：安全分数小于-0.01并且反方向价格大于等于0.8
                 if not combo1_executed:
                     # 计算已买入方向的安全分数
                     _, _, _, safety_score = calculate_safety_index(first_outcome, btc_current_price, btc_opening_price)
                     
-                    # 检查安全分数是否小于-0.01 AND 剩余时间<=20秒
-                    if safety_score < -0.01 and time_left <= 30:
+                    # 检查安全分数是否小于-0.01
+                    if safety_score < -0.01:
                         # 检查对冲方向价格是否 >= 0.80
                         if opposite_price_valid and opposite_price >= 0.80:
-                            print(f"\n🔄 对冲组合1条件满足: 安全分数={safety_score:.2f} < -0.01, 对冲方向价格={opposite_price:.3f} >= 0.80, 剩余时间={time_left}秒 <= 20秒")
+                            print(f"\n🔄 对冲组合1条件满足: 安全分数={safety_score:.2f} < -0.01, 对冲方向价格={opposite_price:.3f} >= 0.80")
                             print(f"  对冲状态: first_order_triggered={hedge_state['first_order_triggered']}")
                             print(f"  第一次下单市场: {hedge_state['first_order_market_slug']}, 当前市场: {current_market_slug}")
                             print(f"  当前市场对冲状态: 未下单")
@@ -1634,23 +1517,11 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
                             print(f"\n📤 对冲下单结果: {hedge_result}")
                             
                             # 只有在下单成功时才标记对冲订单已下单
-                            if "下单成功" in str(hedge_result):
+                            if "下单成功" in hedge_result:
                                 hedge_state['hedge_orders_by_market'][current_market_slug] = True
                                 hedge_state['hedge_triggered'] = True
-                                hedge_state['combo1_hedge_executed'] = True
+                                hedge_state['combo1_hedge_executed'] = True  # 标记组合1已执行
                                 print(f"✅ 对冲组合1完成: {first_outcome} + {opposite_outcome}")
-                                # Arc: 铸造交易证明代币
-                                try:
-                                    arc_tx = record_trade_on_chain(
-                                        opposite_outcome, 0.95, 
-                                        market_state['prices'].get('btc_price', 0)
-                                    )
-                                    if arc_tx:
-                                        print(f"  [Arc] 铸造证明: https://testnet.arcscan.app/tx/{arc_tx}")
-                                    else:
-                                        print(f"  [Arc] 铸造跳过(网络)")
-                                except:
-                                    pass
                                 
                                 # 显示对冲后的结算盈利
                                 if hedge_state['first_order_position_fetched'] and hedge_state['first_order_quantity'] > 0:
@@ -1675,13 +1546,13 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
                             else:
                                 print(f"  对冲组合1条件不满足: 无法获取对冲方向价格，不下对冲订单")
                     else:
-                        # 调试信息：显示当前安全分数和时间
-                        print(f"  对冲组合1监控中: 安全分数={safety_score:.2f} >= -0.01 或 剩余时间={time_left}秒 > 20秒，等待条件满足")
+                        # 调试信息：显示当前安全分数
+                        print(f"  对冲组合1监控中: 安全分数={safety_score:.2f} >= -0.01，等待条件满足")
                 
-                # 组合2：剩余时间 <= 20秒 AND 反方向价格 > 0.76
+                # 组合2：剩余时间小于10秒并且反方向价格大于0.6
                 # 注意：只有组合1未执行时才执行组合2
-                if not combo1_executed and time_left <= 20 and opposite_price_valid and opposite_price > 0.76:
-                    print(f"\n🔄 对冲组合2条件满足: 剩余时间={time_left}秒 <= 20秒, 对冲方向价格={opposite_price:.3f} > 0.76")
+                if not combo1_executed and time_left < 10 and opposite_price_valid and opposite_price > 0.76:
+                    print(f"\n🔄 对冲组合2条件满足: 剩余时间={time_left}秒 < 10秒, 对冲方向价格={opposite_price:.3f} > 0.60")
                     print(f"  对冲状态: first_order_triggered={hedge_state['first_order_triggered']}")
                     print(f"  第一次下单市场: {hedge_state['first_order_market_slug']}, 当前市场: {current_market_slug}")
                     print(f"  当前市场对冲状态: 未下单")
@@ -1714,9 +1585,9 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
                             print(f"  如果首单方向错误: {max_loss:.2f} USDC (-100.00%)")
                     else:
                         print(f"❌ 对冲下单失败，不标记为已下单状态")
-                elif not combo1_executed and time_left <= 20:
+                elif not combo1_executed and time_left < 10:
                     # 显示组合2条件检查状态
-                    print(f"  对冲组合2监控中: 剩余时间={time_left}秒 <= 20秒, 对冲方向价格={opposite_price:.3f} {'>' if opposite_price_valid else '无效'} 0.76")
+                    print(f"  对冲组合2监控中: 剩余时间={time_left}秒 < 10秒, 对冲方向价格={opposite_price:.3f} {'>' if opposite_price_valid else '无效'} 0.60")
             else:
                 # 调试信息：显示当前市场对冲订单已下单
                 print(f"  对冲状态: 当前市场 {current_market_slug} 对冲订单已下单")
@@ -1732,7 +1603,7 @@ def display_all_info(market_data, btc_current_price, btc_opening_price, refresh_
             hedge_state['hedge_order_placed'] = False
             hedge_state['hedge_triggered'] = False
             hedge_state['combo1_hedge_executed'] = False  # 重置组合1执行状态
-            hedge_state['tp_sl_loss_timer_start'] = 0.0  # 重置止损计时器
+            # hedge_state['tp_sl_loss_timer_start'] = 0.0  # 【已注释】重置止损计时器
     else:
         # 调试信息：显示尚未触发第一次下单
         if btc_change_abs <= 12:
@@ -2027,7 +1898,7 @@ def get_net_position_from_trades(wallet_address: str, condition_id: str, outcome
     """
     【核心修复】通过交易记录查询获取净持仓（买入 - 卖出）
     不依赖链上查询，纯API方式，轻量快速
-    默认只查最近5分钟，大幅减少流量消耗
+    默认只查当前5分钟块，大幅减少流量消耗
     
     返回: (net_quantity, avg_buy_price, total_buy_cost) 或 (0, 0, 0) 如果失败
     """
@@ -2379,7 +2250,11 @@ def _post_order_with_retry(client, order_args, order_type, label="下单"):
         try:
             signed_order = client.create_order(order_args)
             resp = client.post_order(signed_order, order_type)
-            # 检测是否真正下单成功 - 有 orderID 才算
+            # DEBUG: 看实际响应格式
+            if isinstance(resp, dict):
+                print(f"  [DEBUG] post_order resp keys: {list(resp.keys())[:10]}")
+            else:
+                print(f"  [DEBUG] post_order resp type: {type(resp).__name__} = {str(resp)[:100]}")
             order_success = False
             if isinstance(resp, dict):
                 if resp.get('error') == 'order_version_mismatch':
@@ -2388,16 +2263,15 @@ def _post_order_with_retry(client, order_args, order_type, label="下单"):
                         continue
                 elif resp.get('ordId') or resp.get('id'):
                     order_success = True
-            elif hasattr(resp, 'orderID'):
+            elif hasattr(resp, 'ordId'):
                 order_success = True
 
             if order_success:
-                # 下单成功！立即铸造 Arc 证明
                 try:
                     side_str = str(getattr(order_args, 'side', 'BUY'))
                     sz = getattr(order_args, 'size', 0)
                     px = getattr(order_args, 'price', 0)
-                    arc_tx = record_trade_on_chain(side_str, sz, px, 0)
+                    arc_tx = record_trade_on_chain(side_str, sz, px)
                     if arc_tx:
                         print(f"  [Arc] ✅ 铸造证明: https://testnet.arcscan.app/tx/{arc_tx}")
                     else:
@@ -2406,15 +2280,14 @@ def _post_order_with_retry(client, order_args, order_type, label="下单"):
                     print(f"  [Arc] ⚠️ 铸造异常: {e}")
             return resp
         except PolyApiException as e:
-            err_data = e.error_msg if isinstance(e.error_msg, dict) else {}
             err_str = str(e.error_msg)
             if 'order_version_mismatch' in err_str and attempt < max_retries - 1:
                 print(f"  🔄 {label}: 版本不匹配(PolyApiException)，刷新后重试 (第{attempt+1}次)...")
                 continue
-            # 其他错误直接返回
             return {'success': False, 'errorMsg': err_str, 'error': err_str}
         except Exception as e:
             return {'success': False, 'errorMsg': str(e), 'error': str(e)}
+    return {'success': False, 'errorMsg': 'order_version_mismatch (重试耗尽)', 'error': 'order_version_mismatch'}
     return {'success': False, 'errorMsg': 'order_version_mismatch (重试耗尽)', 'error': 'order_version_mismatch'}
 
 def execute_order(market_data, outcome, price, btc_change_abs=None):
@@ -2438,10 +2311,9 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
         if not market_slug:
             return "未找到市场信息"
         
-        # 【双重保护】判断是否为对冲订单：价格=0.95 且 有首单 且 方向相反
+        # 【双重保护】判断是否为对冲订单：已触发首单 且 方向与首单相反
         first_outcome = hedge_state.get('first_order_outcome')
-        is_hedge_order = (price == 0.95 and 
-                          hedge_state['first_order_triggered'] and 
+        is_hedge_order = (hedge_state['first_order_triggered'] and 
                           first_outcome and 
                           outcome != first_outcome)
         
@@ -2455,33 +2327,34 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
             print(f"⛔ 已有首单（方向: {first_outcome}），禁止重复下单或下反方向订单（当前尝试: {outcome}）")
             return "已有首单，禁止重复下单"
         
-        # 检查1: 是否已经买入过这个token_id
-        bought_token_ids = load_bought_token_ids()
-        if token_id in bought_token_ids:
-            print(f"Token ID {token_id} 已经买入过，跳过重复下单")
-            return f"已买入过 {outcome}，跳过重复下单"
+        # 检查1: 是否已经买入过这个token_id（对冲订单跳过此检查，允许买反方向）
+        if not is_hedge_order:
+            bought_token_ids = load_bought_token_ids()
+            if token_id in bought_token_ids:
+                print(f"Token ID {token_id} 已经买入过，跳过重复下单")
+                return f"已买入过 {outcome}，跳过重复下单"
         
-        # 检查2: 该市场是否已经下单过（同一个方向）
-        # 用户要求：同一个方向只能下单一次
-        ordered_markets = load_ordered_markets()
-        if market_slug in ordered_markets:
-            # 如果市场已经有下单记录，检查是否已经下过相同方向的订单
-            if outcome in ordered_markets[market_slug]:
-                print(f"⚠️ 市场 {market_slug} 已经下过 {outcome} 订单，跳过重复下单")
-                print(f"  已下单方向: {ordered_markets[market_slug]}")
-                print(f"  本次尝试方向: {outcome}")
-                print(f"  规则: 同一个方向只能下单一次")
-                return f"市场 {market_slug} 已下过 {outcome} 订单，不再接受相同方向订单"
+        # 检查2: 该市场是否已经下单过（同一个方向）- 对冲订单跳过此检查
+        if not is_hedge_order:
+            ordered_markets = load_ordered_markets()
+            if market_slug in ordered_markets:
+                if outcome in ordered_markets[market_slug]:
+                    print(f"⚠️ 市场 {market_slug} 已经下过 {outcome} 订单，跳过重复下单")
+                    print(f"  已下单方向: {ordered_markets[market_slug]}")
+                    print(f"  本次尝试方向: {outcome}")
+                    print(f"  规则: 同一个方向只能下单一次")
+                    return f"市场 {market_slug} 已下过 {outcome} 订单，不再接受相同方向订单"
         
-        # 判断是否是对冲订单：价格等于0.95且已触发第一次下单
-        if price == 0.95 and hedge_state['first_order_triggered']:
+        # 判断订单大小：对冲订单1.2，普通订单4.0
+        if is_hedge_order:
             order_size = 1.2  # 对冲订单数量
         else:
-            order_size = 3.6  # 普通订单数量（组合1、2、3）
+            order_size = 1.2  # 普通订单数量（组合1、2、3）
         
         # 【优化】价格策略：从WebSocket获取best_ask，确保FOK能立即成交
         # 如果WebSocket有数据，用 best_ask + 0.02（更激进），但不超过0.99
         # 如果WebSocket无数据，fallback到0.95
+        # 注意：使用整数美分运算避免浮点精度问题
         order_price = 0.95  # 默认价格
         ws_best_ask = None
         
@@ -2493,9 +2366,10 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                     try:
                         best_ask_float = float(best_ask_raw)
                         if 0.01 <= best_ask_float <= 0.99:
-                            # 使用 best_ask + 0.01 确保成交，但不超过0.99
-                            ws_best_ask = min(0.99, round(best_ask_float + 0, 2))
-                            order_price = ws_best_ask
+                            # 整数美分运算：转美分 → +2美分 → 除以100，彻底避免浮点精度错误
+                            price_cents = int(round(best_ask_float * 100)) + 2
+                            order_price = min(99, price_cents) / 100.0
+                            ws_best_ask = order_price
                     except:
                         pass
         except Exception:
@@ -2509,7 +2383,7 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
         print(f"\n🚀 执行下单: 买入 {outcome}, 价格 {order_price}, 数量 {order_size}")
         print(f"Token ID: {token_id}")
         if ws_best_ask:
-            print(f"💡 价格策略: WebSocket best_ask + 0.01 = {order_price} (确保成交)")
+            print(f"💡 价格策略: WebSocket best_ask + 0.02 = {order_price} (确保成交)")
         else:
             print(f"💡 价格策略: 使用默认价格 {order_price} (WebSocket无数据)")
         
@@ -2549,11 +2423,12 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
             # 保存已买入的token_id
             save_bought_token_id(token_id)
             
-            # 保存已下单的市场和方向
+            # 对冲订单也保存市场记录（允许反方向记录）
             save_ordered_market(market_slug, outcome)
             
             # 记录下单历史
             order_time = datetime.now().strftime('%H:%M:%S')
+            hedge_label = ' [对冲]' if is_hedge_order else ''
             order_record = {
                 'time': order_time,
                 'outcome': outcome,
@@ -2564,18 +2439,23 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                 'order_type': order_type_used,
                 'order_id': resp.get('orderId', '未知'),
                 'order_hash': resp.get('orderHash', '未知'),
-                'market_slug': market_slug
+                'market_slug': market_slug,
+                'hedge': is_hedge_order
             }
             
-            # 保存到文件
+            # 保存到文件 = 交易成功
             try:
                 with open('order_history.json', 'a') as f:
                     f.write(json.dumps(order_record) + '\n')
+                # Arc: 交易成功，立即铸造证明
+                arc_tx = record_trade_on_chain(outcome, order_size, order_price)
+                if arc_tx:
+                    print(f"  [Arc] ✅ 铸造证明: https://testnet.arcscan.app/tx/{arc_tx}")
             except:
                 pass
             
-            # 如果是第一次下单成功，记录对冲状态
-            if not hedge_state['first_order_triggered']:
+            # 如果是第一次下单成功（非对冲订单），记录对冲状态
+            if not hedge_state['first_order_triggered'] and not is_hedge_order:
                 hedge_state['first_order_triggered'] = True
                 hedge_state['first_order_outcome'] = outcome
                 hedge_state['first_order_market_slug'] = market_slug
@@ -2584,7 +2464,7 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                     hedge_state['btc_change_at_first_order'] = btc_change_abs
                 print(f"📝 记录第一次下单: {outcome}, 市场: {market_slug}, BTC变化: {btc_change_abs}")
                 
-                # 延迟20秒后获取首单持仓数量
+                # 延迟5秒后开始轮询获取首单持仓数量（每2秒一次，最多10次）
                 proxy_address = os.getenv('PROXY_ADDRESS')
                 if proxy_address and market_data:
                     condition_id = market_data.get('conditionId', '')
@@ -2609,8 +2489,8 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                         
                         def fetch_position_polling():
                             """轮询查询首单持仓：5秒后开始，每2秒查一次，查到就停"""
-                            max_attempts = 10  # 最多查10次
-                            poll_interval = 2.0  # 每次间隔2秒
+                            max_attempts = 10
+                            poll_interval = 2.0
                             
                             for attempt in range(1, max_attempts + 1):
                                 try:
@@ -2672,7 +2552,8 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
                     else:
                         print(f"⚠️ 无法获取condition_id，持仓数量获取失败")
             
-            return f"下单成功: 买入 {outcome} @ {order_price} ({order_type_used})"
+            hedge_suffix = ' [对冲]' if is_hedge_order else ''
+            return f"下单成功: 买入 {outcome} @ {order_price} ({order_type_used}){hedge_suffix}"
         else:
             error_msg = resp.get('errorMsg', '未知错误')
             return f"下单失败: FOK和GTC均失败 - {error_msg}"
@@ -2681,328 +2562,300 @@ def execute_order(market_data, outcome, price, btc_change_abs=None):
         return f"下单失败: {str(e)}"
 
 
-def execute_sell_order(market_data, outcome, size, reason="止盈止损", current_price=None):
-    """
-    执行卖出订单 - 用于止盈止损
-    
-    参数:
-        market_data: 市场数据
-        outcome: 卖出方向 (Up/Down)
-        size: 卖出数量（直接使用，不查询余额）
-        reason: 卖出原因（用于日志）
-        current_price: 当前价格（仅用于日志显示，不再用于计算止损价格）
-    
-    返回:
-        卖出结果字符串
-    
-    价格策略：止盈和止损都使用当前市场最优价格 best_bid，不再打折
-    """
-    try:
-        # 获取token_id
-        token_id = None
-        token_ids = market_data.get('token_ids', [])
-        outcomes = market_data.get('outcomes', [])
-        
-        if outcome in outcomes:
-            index = outcomes.index(outcome)
-            if index < len(token_ids):
-                token_id = token_ids[index]
-        
-        if not token_id or token_id == 'N/A':
-            return "未找到token_id"
-        
-        # 获取市场slug
-        market_slug = market_data.get('slug', '')
-        if not market_slug:
-            return "未找到市场信息"
-        
-        # 检查是否有持仓可卖
-        if size <= 0:
-            return f"持仓数量为空 ({size})，无法卖出"
-        
-        # 初始化CLOB客户端
-        client = initialize_clob_client()
-        if not client:
-            return "CLOB客户端初始化失败"
-        
-        # 【关键修复】卖出前用快速API刷新持仓（不调用交易记录或链上，确保卖出速度）
-        proxy_address = os.getenv('PROXY_ADDRESS')
-        condition_id = hedge_state.get('first_order_condition_id')
-        real_size = size  # 默认使用传入的size（fallback）
-        
-        if proxy_address and condition_id:
-            # 只用快速API查询，确保不阻塞卖出时机
-            try:
-                refreshed_size = get_position_quantity_fast(proxy_address, condition_id, outcome)
-                if refreshed_size > 0:
-                    real_size = refreshed_size
-                    print(f"  📊 卖出前快速刷新: {size:.4f} → {refreshed_size:.6f}")
-                else:
-                    print(f"  ⚠️ 快速API返回0，使用原记录: {size:.4f}")
-            except Exception as e:
-                print(f"  ⚠️ 快速刷新失败: {e}，使用原记录: {size:.4f}")
-        else:
-            print(f"  ⚠️ 缺少钱包地址/condition_id，使用原记录: {size:.4f}")
-        
-        actual_sell_size = real_size
-        print(f"\n🔍 {reason}卖出: {outcome}")
-        print(f"  最终卖出数量: {actual_sell_size:.6f}")
-        
-        # 获取当前价格
-        prices = get_prices_from_websocket(token_ids, outcomes)
-        sell_price = 0.0
-        
-        # 止盈和止损都使用best_bid作为卖出价格（不再打折）
-        if prices and outcome in prices:
-            price_data = prices[outcome]
-            best_bid = price_data.get('buy', 'N/A')  # best_bid是买入价，对我们来说是卖出价
-            if best_bid and best_bid != 'N/A':
-                try:
-                    sell_price = float(best_bid)
-                except:
-                    pass
-        
-        # 如果无法获取价格，使用默认价格
-        if sell_price <= 0:
-            sell_price = 0.01  # 默认卖出价格
-        
-        if sell_price > 0:
-            print(f"  💡 最优卖出价格: {sell_price:.4f} (基于市场 best_bid)")
-        
-        print(f"\n🚨 执行{reason}卖出: 卖出 {outcome}, 价格 {sell_price:.4f}, 数量 {actual_sell_size:.4f}")
-        print(f"Token ID: {token_id}")
-        print(f"订单类型: FOK (Fill-Or-Kill)")
-        
-        # 创建订单参数（SELL）
-        order_args = OrderArgs(
-            price=sell_price,
-            size=actual_sell_size,
-            side=SELL,  # 卖出
-            token_id=token_id,
-        )
-        
-        # 创建签名订单
-        signed_order = client.create_order(order_args)
-        
-        # 使用GTC（Good Till Canceled）订单类型
-        resp = client.post_order(signed_order, OrderType.GTC)
-        
-        if resp.get('success', False):
-            # 记录卖出历史
-            order_time = datetime.now().strftime('%H:%M:%S')
-            order_record = {
-                'time': order_time,
-                'outcome': outcome,
-                'price': sell_price,
-                'size': actual_sell_size,
-                'expected_size': size,
-                'token_id': token_id,
-                'order_type': 'FOK',
-                'order_side': 'SELL',
-                'order_id': resp.get('orderId', '未知'),
-                'order_hash': resp.get('orderHash', '未知'),
-                'market_slug': market_slug,
-                'reason': reason
-            }
-            
-            # 保存到文件
-            try:
-                with open('sell_history.json', 'a') as f:
-                    f.write(json.dumps(order_record) + '\n')
-            except:
-                pass
-            
-            # 标记止盈止损已执行
-            hedge_state['tp_sl_executed'] = True
-            
-            print(f"✅ {reason}卖出订单提交成功: 卖出 {outcome} @ {sell_price:.4f}, 数量 {actual_sell_size:.4f}")
-            
-            # 卖出后快速检查是否清空（不用链上查询，用快速API）
-            if proxy_address and condition_id:
-                try:
-                    time.sleep(1.5)  # 减少等待时间，加快清仓速度
-                    remaining = get_position_quantity_fast(proxy_address, condition_id, outcome)
-                    if remaining > 0.001:
-                        print(f"  ⚠️ 卖出后仍有余额: {remaining:.6f}，尝试二次清仓...")
-                        try:
-                            order_args2 = OrderArgs(
-                                price=sell_price,
-                                size=remaining,
-                                side=SELL,
-                                token_id=token_id,
-                            )
-                            signed_order2 = client.create_order(order_args2)
-                            resp2 = client.post_order(signed_order2, OrderType.GTC)
-                            if resp2.get('success', False):
-                                print(f"  ✅ 二次清仓订单提交成功: {remaining:.6f}")
-                                return f"{reason}卖出成功: 主单 {actual_sell_size:.4f} + 清仓 {remaining:.4f}"
-                            else:
-                                print(f"  ❌ 二次清仓失败: {resp2.get('errorMsg', '未知错误')}")
-                        except Exception as e2:
-                            print(f"  ❌ 二次清仓异常: {e2}")
-                    else:
-                        print(f"  ✅ 持仓已清空，无剩余")
-                except Exception as e:
-                    print(f"  ⚠️ 卖出后余额查询失败: {e}")
-            
-            return f"{reason}卖出成功: 卖出 {outcome} @ {sell_price:.4f}"
-        else:
-            error_msg = resp.get('errorMsg', '未知错误')
-            print(f"❌ {reason}卖出失败: {error_msg}")
-            return f"{reason}卖出失败: {error_msg}"
-        
-    except Exception as e:
-        print(f"❌ {reason}卖出异常: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"{reason}卖出失败: {str(e)}"
+# 【已注释】execute_sell_order 函数 - 止盈止损功能已禁用
+# def execute_sell_order(market_data, outcome, size, reason="止盈止损", current_price=None):
+#     """
+#     执行卖出订单 - 用于止盈止损
+#     
+#     参数:
+#         market_data: 市场数据
+#         outcome: 卖出方向 (Up/Down)
+#         size: 卖出数量（直接使用，不查询余额）
+#         reason: 卖出原因（用于日志）
+#         current_price: 当前价格（用于止损时计算卖出价格）
+#     
+#     返回:
+#         卖出结果字符串
+#     """
+#     try:
+#         # 获取token_id
+#         token_id = None
+#         token_ids = market_data.get('token_ids', [])
+#         outcomes = market_data.get('outcomes', [])
+#         
+#         if outcome in outcomes:
+#             index = outcomes.index(outcome)
+#             if index < len(token_ids):
+#                 token_id = token_ids[index]
+#         
+#         if not token_id or token_id == 'N/A':
+#             return "未找到token_id"
+#         
+#         # 获取市场slug
+#         market_slug = market_data.get('slug', '')
+#         if not market_slug:
+#             return "未找到市场信息"
+#         
+#         # 检查是否有持仓可卖
+#         if size <= 0:
+#             return f"持仓数量为空 ({size})，无法卖出"
+#         
+#         # 初始化CLOB客户端
+#         client = initialize_clob_client()
+#         if not client:
+#             return "CLOB客户端初始化失败"
+#         
+#         # 【关键修复】卖出前用快速API刷新持仓（不调用交易记录或链上，确保卖出速度）
+#         proxy_address = os.getenv('PROXY_ADDRESS')
+#         condition_id = hedge_state.get('first_order_condition_id')
+#         real_size = size  # 默认使用传入的size（fallback）
+#         
+#         if proxy_address and condition_id:
+#             # 只用快速API查询，确保不阻塞卖出时机
+#             try:
+#                 refreshed_size = get_position_quantity_fast(proxy_address, condition_id, outcome)
+#                 if refreshed_size > 0:
+#                     real_size = refreshed_size
+#                     print(f"  📊 卖出前快速刷新: {size:.4f} → {refreshed_size:.6f}")
+#                 else:
+#                     print(f"  ⚠️ 快速API返回0，使用原记录: {size:.4f}")
+#             except Exception as e:
+#                 print(f"  ⚠️ 快速刷新失败: {e}，使用原记录: {size:.4f}")
+#         else:
+#             print(f"  ⚠️ 缺少钱包地址/condition_id，使用原记录: {size:.4f}")
+#         
+#         actual_sell_size = real_size
+#         print(f"\n🔍 {reason}卖出: {outcome}")
+#         print(f"  最终卖出数量: {actual_sell_size:.6f}")
+#         
+#         # 获取当前价格
+#         prices = get_prices_from_websocket(token_ids, outcomes)
+#         sell_price = 0.0
+#         
+#         # 如果是止损卖出，使用当前价格减去0.12
+#         if reason == "止损" and current_price is not None:
+#             sell_price = max(0.01, current_price - 0.05)  # 确保价格不小于0.01
+#             print(f"  💡 止损卖出价格: {sell_price:.4f} (现价 {current_price:.4f} - 0.1)")
+#         else:
+#             # 止盈或其他情况：使用best_bid作为卖出价格
+#             if prices and outcome in prices:
+#                 price_data = prices[outcome]
+#                 best_bid = price_data.get('buy', 'N/A')  # best_bid是买入价，对我们来说是卖出价
+#                 if best_bid and best_bid != 'N/A':
+#                     try:
+#                         sell_price = float(best_bid)
+#                     except:
+#                         pass
+#             
+#             # 如果无法获取价格，使用默认价格
+#             if sell_price <= 0:
+#                 sell_price = 0.01  # 默认卖出价格
+#             
+#             if sell_price > 0:
+#                 print(f"  💡 最优卖出价格: {sell_price:.4f} (基于市场 best_bid)")
+#         
+#         print(f"\n🚨 执行{reason}卖出: 卖出 {outcome}, 价格 {sell_price:.4f}, 数量 {actual_sell_size:.4f}")
+#         print(f"Token ID: {token_id}")
+#         print(f"订单类型: FOK (Fill-Or-Kill)")
+#         
+#         # 创建订单参数（SELL）
+#         order_args = OrderArgs(
+#             price=sell_price,
+#             size=actual_sell_size,
+#             side=SELL,  # 卖出
+#             token_id=token_id,
+#         )
+#         
+#         # 创建签名订单
+#         signed_order = client.create_order(order_args)
+#         
+#         # 使用GTC（Good Till Canceled）订单类型
+#         resp = client.post_order(signed_order, OrderType.GTC)
+#         
+#         if resp.get('success', False):
+#             # 记录卖出历史
+#             order_time = datetime.now().strftime('%H:%M:%S')
+#             order_record = {
+#                 'time': order_time,
+#                 'outcome': outcome,
+#                 'price': sell_price,
+#                 'size': actual_sell_size,
+#                 'expected_size': size,
+#                 'token_id': token_id,
+#                 'order_type': 'FOK',
+#                 'order_side': 'SELL',
+#                 'order_id': resp.get('orderId', '未知'),
+#                 'order_hash': resp.get('orderHash', '未知'),
+#                 'market_slug': market_slug,
+#                 'reason': reason
+#             }
+#             
+#             # 保存到文件
+#             try:
+#                 with open('sell_history.json', 'a') as f:
+#                     f.write(json.dumps(order_record) + '\n')
+#             except:
+#                 pass
+#             
+#             # 标记止盈止损已执行
+#             hedge_state['tp_sl_executed'] = True
+#             
+#             print(f"✅ {reason}卖出订单提交成功: 卖出 {outcome} @ {sell_price:.4f}, 数量 {actual_sell_size:.4f}")
+#             
+#             # 卖出后快速检查是否清空（不用链上查询，用快速API）
+#             if proxy_address and condition_id:
+#                 try:
+#                     time.sleep(1.5)  # 减少等待时间，加快清仓速度
+#                     remaining = get_position_quantity_fast(proxy_address, condition_id, outcome)
+#                     if remaining > 0.001:
+#                         print(f"  ⚠️ 卖出后仍有余额: {remaining:.6f}，尝试二次清仓...")
+#                         try:
+#                             order_args2 = OrderArgs(
+#                                 price=sell_price,
+#                                 size=remaining,
+#                                 side=SELL,
+#                                 token_id=token_id,
+#                             )
+#                             signed_order2 = client.create_order(order_args2)
+#                             resp2 = client.post_order(signed_order2, OrderType.GTC)
+#                             if resp2.get('success', False):
+#                                 print(f"  ✅ 二次清仓订单提交成功: {remaining:.6f}")
+#                                 return f"{reason}卖出成功: 主单 {actual_sell_size:.4f} + 清仓 {remaining:.4f}"
+#                             else:
+#                                 print(f"  ❌ 二次清仓失败: {resp2.get('errorMsg', '未知错误')}")
+#                         except Exception as e2:
+#                             print(f"  ❌ 二次清仓异常: {e2}")
+#                     else:
+#                         print(f"  ✅ 持仓已清空，无剩余")
+#                 except Exception as e:
+#                     print(f"  ⚠️ 卖出后余额查询失败: {e}")
+#             
+#             return f"{reason}卖出成功: 卖出 {outcome} @ {sell_price:.4f}"
+#         else:
+#             error_msg = resp.get('errorMsg', '未知错误')
+#             print(f"❌ {reason}卖出失败: {error_msg}")
+#             return f"{reason}卖出失败: {error_msg}"
+#         
+#     except Exception as e:
+#         print(f"❌ {reason}卖出异常: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return f"{reason}卖出失败: {str(e)}"
 
 
-def check_and_execute_tp_sl(market_data, current_first_price, first_outcome, first_quantity, first_price):
-    """
-    检查并执行止盈止损
-    
-    参数:
-        market_data: 市场数据
-        current_first_price: 当前价格
-        first_outcome: 首单方向
-        first_quantity: 首单数量
-        first_price: 首单买入价格
-    
-    返回:
-        (triggered, executed, message) - 是否触发、是否执行、消息
-    """
-    # 如果已经执行过止盈止损，不再执行
-    if hedge_state['tp_sl_executed']:
-        return False, False, "止盈止损已执行过"
-    
-    # 计算盈利百分比
-    profit_pct = ((current_first_price - first_price) / first_price) * 100 if first_price > 0 else 0
-    
-    # 更新上次检查的盈利百分比（用于日志）
-    hedge_state['tp_sl_last_profit_pct'] = profit_pct
-    
-    # 止盈条件：盈利 >= 10%
-    tp_triggered = profit_pct >= 20.0
-    
-    # 止损条件：亏损 >= 20% (即盈利 <= -20%) 且持续15秒
-    if profit_pct <= -20.0:
-        if hedge_state['tp_sl_loss_timer_start'] == 0.0:
-            hedge_state['tp_sl_loss_timer_start'] = time.time()
-            print(f"\n⏱️ 止损条件初步满足! 亏损: {profit_pct:.2f}% <= -20%，开始15秒计时...")
-        elapsed = time.time() - hedge_state['tp_sl_loss_timer_start']
-        sl_triggered = elapsed >= 28.0
-        if sl_triggered:
-            print(f"   计时结束: 已持续 {elapsed:.1f} 秒 >= 15秒")
-    else:
-        if hedge_state['tp_sl_loss_timer_start'] != 0.0:
-            print(f"\n🔄 止损条件解除! 当前盈亏: {profit_pct:.2f}% > -20%，重置计时器")
-        hedge_state['tp_sl_loss_timer_start'] = 0.0
-        sl_triggered = False
-    
-    # 检查是否触发止盈或止损
-    if tp_triggered:
-        print(f"\n🎯 止盈条件触发! 盈利: +{profit_pct:.2f}% >= 10%")
-        print(f"   当前价格: {current_first_price:.4f}, 买入价格: {first_price:.4f}")
-        
-        # 卖出前快速刷新持仓（只用轻量级API，不阻塞卖出时机）
-        proxy_address = os.getenv('PROXY_ADDRESS')
-        condition_id = hedge_state.get('first_order_condition_id')
-        refreshed_quantity = first_quantity
-        if proxy_address and condition_id:
-            try:
-                fresh_size = get_position_quantity_fast(proxy_address, condition_id, first_outcome)
-                if fresh_size > 0:
-                    refreshed_quantity = fresh_size
-                    hedge_state['first_order_quantity'] = fresh_size
-                    print(f"   💡 卖出前快速刷新: {first_quantity:.4f} → {fresh_size:.6f}")
-            except Exception as e:
-                print(f"   ⚠️ 快速刷新失败: {e}，使用缓存值: {first_quantity:.4f}")
-        
-        # 执行卖出
-        result = execute_sell_order(market_data, first_outcome, refreshed_quantity, "止盈")
-        
-        if "成功" in result:
-            return True, True, f"止盈成功: +{profit_pct:.2f}%"
-        else:
-            return True, False, f"止盈触发但执行失败: {result}"
-    
-    elif sl_triggered:
-        print(f"\n🛑 止损条件触发! 亏损: {profit_pct:.2f}% <= -20% 且持续15秒")
-        print(f"   当前价格: {current_first_price:.4f}, 买入价格: {first_price:.4f}")
-        
-        # 【新增】检查对方价格是否 >= 0.8，保证先止损再对冲的逻辑顺序
-        opposite_outcome = "Down" if first_outcome == "Up" else "Up"
-        opposite_price_valid = False
-        opposite_price = 0.0
-        
-        token_ids = market_data.get('token_ids', [])
-        outcomes = market_data.get('outcomes', [])
-        prices = get_prices_from_websocket(token_ids, outcomes)
-        
-        if prices and opposite_outcome in prices:
-            price_data = prices[opposite_outcome]
-            buy_price = price_data.get('buy', 'N/A')
-            if buy_price and buy_price != 'N/A':
-                try:
-                    opposite_price = float(buy_price)
-                    opposite_price_valid = True
-                except:
-                    pass
-        
-        if not opposite_price_valid or opposite_price < 0.80:
-            print(f"   ⛔ 止损暂不执行: 对方({opposite_outcome})价格={opposite_price:.3f} < 0.80")
-            print(f"   等待对方价格涨到 >= 0.80 再执行止损卖出，确保先对冲再止损")
-            return True, False, f"止损触发但对方价格不够({opposite_price:.3f} < 0.80)，等待对冲条件"
-        
-        print(f"   ✅ 对方({opposite_outcome})价格={opposite_price:.3f} >= 0.80，可以执行止损")
-        
-        # 卖出前快速刷新持仓（只用轻量级API，不阻塞卖出时机）
-        proxy_address = os.getenv('PROXY_ADDRESS')
-        condition_id = hedge_state.get('first_order_condition_id')
-        refreshed_quantity = first_quantity
-        if proxy_address and condition_id:
-            try:
-                fresh_size = get_position_quantity_fast(proxy_address, condition_id, first_outcome)
-                if fresh_size > 0:
-                    refreshed_quantity = fresh_size
-                    hedge_state['first_order_quantity'] = fresh_size
-                    print(f"   💡 卖出前快速刷新: {first_quantity:.4f} → {fresh_size:.6f}")
-            except Exception as e:
-                print(f"   ⚠️ 快速刷新失败: {e}，使用缓存值: {first_quantity:.4f}")
-        
-        # 执行卖出（止损：使用当前最优价格 best_bid，不再打折）
-        result = execute_sell_order(market_data, first_outcome, refreshed_quantity, "止损", current_first_price)
-        
-        if "成功" in result:
-            return True, True, f"止损成功: {profit_pct:.2f}%"
-        else:
-            return True, False, f"止损触发但执行失败: {result}"
-    
-    else:
-        # 未触发，只记录（每10秒记录一次避免刷屏）
-        current_time = time.time()
-        if not hasattr(check_and_execute_tp_sl, 'last_log_time'):
-            check_and_execute_tp_sl.last_log_time = 0
-        
-        if current_time - check_and_execute_tp_sl.last_log_time >= 10:
-            print(f"  止盈止损监控中: 当前盈亏 {profit_pct:+.2f}% (止盈: +10%, 止损: -20%且持续15秒)")
-            check_and_execute_tp_sl.last_log_time = current_time
-        
-        return False, False, f"监控中: {profit_pct:+.2f}%"
+# 【已注释】check_and_execute_tp_sl 函数 - 止盈止损功能已禁用
+# def check_and_execute_tp_sl(market_data, current_first_price, first_outcome, first_quantity, first_price):
+#     """
+#     检查并执行止盈止损
+#     
+#     参数:
+#         market_data: 市场数据
+#         current_first_price: 当前价格
+#         first_outcome: 首单方向
+#         first_quantity: 首单数量
+#         first_price: 首单买入价格
+#     
+#     返回:
+#         (triggered, executed, message) - 是否触发、是否执行、消息
+#     """
+#     # 如果已经执行过止盈止损，不再执行
+#     if hedge_state['tp_sl_executed']:
+#         return False, False, "止盈止损已执行过"
+#     
+#     # 计算盈利百分比
+#     profit_pct = ((current_first_price - first_price) / first_price) * 100 if first_price > 0 else 0
+#     
+#     # 更新上次检查的盈利百分比（用于日志）
+#     hedge_state['tp_sl_last_profit_pct'] = profit_pct
+#     
+#     # 止盈条件：盈利 >= 10%
+#     tp_triggered = profit_pct >= 5.0
+#     
+#     # 止损条件：亏损 >= 20% (即盈利 <= -20%) 且持续15秒
+#     if profit_pct <= -20.0:
+#         if hedge_state['tp_sl_loss_timer_start'] == 0.0:
+#             hedge_state['tp_sl_loss_timer_start'] = time.time()
+#             print(f"\n⏱️ 止损条件初步满足! 亏损: {profit_pct:.2f}% <= -20%，开始15秒计时...")
+#         elapsed = time.time() - hedge_state['tp_sl_loss_timer_start']
+#         sl_triggered = elapsed >= 30.0
+#         if sl_triggered:
+#             print(f"   计时结束: 已持续 {elapsed:.1f} 秒 >= 15秒")
+#     else:
+#         if hedge_state['tp_sl_loss_timer_start'] != 0.0:
+#             print(f"\n🔄 止损条件解除! 当前盈亏: {profit_pct:.2f}% > -20%，重置计时器")
+#         hedge_state['tp_sl_loss_timer_start'] = 0.0
+#         sl_triggered = False
+#     
+#     # 检查是否触发止盈或止损
+#     if tp_triggered:
+#         print(f"\n🎯 止盈条件触发! 盈利: +{profit_pct:.2f}% >= 10%")
+#         print(f"   当前价格: {current_first_price:.4f}, 买入价格: {first_price:.4f}")
+#         
+#         # 卖出前快速刷新持仓（只用轻量级API，不阻塞卖出时机）
+#         proxy_address = os.getenv('PROXY_ADDRESS')
+#         condition_id = hedge_state.get('first_order_condition_id')
+#         refreshed_quantity = first_quantity
+#         if proxy_address and condition_id:
+#             try:
+#                 fresh_size = get_position_quantity_fast(proxy_address, condition_id, first_outcome)
+#                 if fresh_size > 0:
+#                     refreshed_quantity = fresh_size
+#                     hedge_state['first_order_quantity'] = fresh_size
+#                     print(f"   💡 卖出前快速刷新: {first_quantity:.4f} → {fresh_size:.6f}")
+#             except Exception as e:
+#                 print(f"   ⚠️ 快速刷新失败: {e}，使用缓存值: {first_quantity:.4f}")
+#         
+#         # 执行卖出
+#         result = execute_sell_order(market_data, first_outcome, refreshed_quantity, "止盈")
+#         
+#         if "成功" in result:
+#             return True, True, f"止盈成功: +{profit_pct:.2f}%"
+#         else:
+#             return True, False, f"止盈触发但执行失败: {result}"
+#     
+#     elif sl_triggered:
+#         print(f"\n🛑 止损条件触发! 亏损: {profit_pct:.2f}% <= -20% 且持续15秒")
+#         print(f"   当前价格: {current_first_price:.4f}, 买入价格: {first_price:.4f}")
+#         
+#         # 卖出前快速刷新持仓（只用轻量级API，不阻塞卖出时机）
+#         proxy_address = os.getenv('PROXY_ADDRESS')
+#         condition_id = hedge_state.get('first_order_condition_id')
+#         refreshed_quantity = first_quantity
+#         if proxy_address and condition_id:
+#             try:
+#                 fresh_size = get_position_quantity_fast(proxy_address, condition_id, first_outcome)
+#                 if fresh_size > 0:
+#                     refreshed_quantity = fresh_size
+#                     hedge_state['first_order_quantity'] = fresh_size
+#                     print(f"   💡 卖出前快速刷新: {first_quantity:.4f} → {fresh_size:.6f}")
+#             except Exception as e:
+#                 print(f"   ⚠️ 快速刷新失败: {e}，使用缓存值: {first_quantity:.4f}")
+#         
+#         # 执行卖出（止损：使用现价减去0.12）
+#         result = execute_sell_order(market_data, first_outcome, refreshed_quantity, "止损", current_first_price)
+#         
+#         if "成功" in result:
+#             return True, True, f"止损成功: {profit_pct:.2f}%"
+#         else:
+#             return True, False, f"止损触发但执行失败: {result}"
+#     
+#     else:
+#         # 未触发，只记录（每10秒记录一次避免刷屏）
+#         current_time = time.time()
+#         if not hasattr(check_and_execute_tp_sl, 'last_log_time'):
+#             check_and_execute_tp_sl.last_log_time = 0
+#         
+#         if current_time - check_and_execute_tp_sl.last_log_time >= 10:
+#             print(f"  止盈止损监控中: 当前盈亏 {profit_pct:+.2f}% (止盈: +10%, 止损: -20%且持续15秒)")
+#             check_and_execute_tp_sl.last_log_time = current_time
+#         
+#         return False, False, f"监控中: {profit_pct:+.2f}%"
 
 
 def main():
     """主函数"""
-    print("启动Polymarket BTC市场监控仪表盘 - V2首单优化版")
-    print("首单条件: 价格>=0.6 AND 剩余时间3-5分钟 | 止盈止损/对冲/赎回与原版一致")
-    print("="*60)
-
-    # Arc: 验证 CCTP Bridge 路径
-    print("[Arc] 验证 CCTP Bridge (Arc → Polygon)...")
-    bridge_status = cctp_bridge_to_polygon(1.0)
-    print(f"[Arc] Bridge: {bridge_status.get('msg', 'ok')}")
-    print(f"[Arc] Agent ID: {AGENT_ID} | 合约: {TOKEN_MESSENGER[:10]}...")
+    print("启动Polymarket BTC市场监控仪表盘 - WebSocket最终版")
+    print("使用WebSocket实时获取BTC价格和up/down价格，确保每秒返回查询结果")
     print("="*60)
     
     # 首先获取市场信息，得到token_ids
@@ -3138,11 +2991,11 @@ def main():
                     hedge_state['first_order_condition_id'] = None
                     hedge_state['first_order_token_id'] = None
                     hedge_state['btc_change_at_first_order'] = 0.0
-                    # 重置止盈止损状态
-                    hedge_state['tp_sl_triggered'] = False
-                    hedge_state['tp_sl_executed'] = False
-                    hedge_state['tp_sl_last_profit_pct'] = 0.0
-                    hedge_state['tp_sl_loss_timer_start'] = 0.0
+                    # 【已注释】重置止盈止损状态
+                    # hedge_state['tp_sl_triggered'] = False
+                    # hedge_state['tp_sl_executed'] = False
+                    # hedge_state['tp_sl_last_profit_pct'] = 0.0
+                    # hedge_state['tp_sl_loss_timer_start'] = 0.0
                     print(f"🔄 重置首单盈利状态和止盈止损状态")
                     
                     print(f"市场已切换到 {current_market_slug}，下单状态已重置")
@@ -3220,23 +3073,7 @@ def main():
                 
     except KeyboardInterrupt:
         print("\n\n监控程序已停止")
-        # Arc: 输出结算概览
-        print("\n" + "="*60)
-        print("[Arc] 结算概览 (Agora Agents Hackathon)")
-        print("="*60)
-        summary = get_settlement_summary()
-        print(f"  Agent ID: {summary['agent_id']}")
-        print(f"  Arc Chain: {summary['arc_chain_id']}")
-        print(f"  交易记录数: {summary['trades_recorded']}")
-        print(f"  铸造合约: {summary['bridge_contract']}")
-        print(f"  Agent NFT: {summary['identity_nft']}")
-        # 打印所有 Arc tx
-        tx_list = _settlement_tracker.get('arc_tx_hashes', [])
-        if tx_list:
-            print(f"\n  Arc 铸造证明 Tx ({len(tx_list)} 笔):")
-            for i, txh in enumerate(tx_list, 1):
-                print(f"    {i}. https://testnet.arcscan.app/tx/{txh}")
-        print("="*60)
+        print_arc_summary()
     except Exception as e:
         print(f"\n程序运行错误: {e}")
         import traceback
