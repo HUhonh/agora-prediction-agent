@@ -16,6 +16,10 @@ h2{font-size:14px;font-weight:500;color:var(--muted);text-transform:uppercase;le
 a{color:var(--primary);text-decoration:none}a:hover{text-decoration:none;filter:brightness(1.2)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{border-color:var(--success)}50%{border-color:transparent}}
+@keyframes slidein{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+.cursor{border-right:2px solid var(--success);animation:blink .8s infinite;padding-right:2px}
+.type-line{animation:slidein .4s ease-out both}
 main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:border-color .3s}
@@ -54,6 +58,9 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   <button class="btn" id="disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect</button>
 </header>
 <main>
+  <div style="margin-bottom:24px;padding:16px 20px;background:rgba(12,92,171,.06);border:1px solid rgba(12,92,171,.15);border-radius:6px;font-family:monospace;font-size:13px;color:var(--success)">
+    <span id="typewriter" class="cursor"></span>
+  </div>
   <div id="wallet-info" style="display:none;margin-bottom:24px" class="panel">
     <div class="stat-row"><span class="stat-label full">Connected</span><span class="addr" id="wallet-addr">—</span></div>
     <div class="stat-row"><span class="stat-label full">Arc Balance</span><span class="balance" id="wallet-bal">—</span></div>
@@ -135,12 +142,20 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .catch(()=>document.getElementById('btc').textContent='—');
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{
-    const p=parseInt(d.price);
-    const el=document.getElementById('btc');
+    const p=parseInt(d.price);const el=document.getElementById('btc');
     el.textContent='$'+p.toLocaleString();
     if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}
     lastPrice=p;
   }).catch(()=>{}),10000);
+
+// 打字动画
+(function typeWriter(){
+  const el=document.getElementById('typewriter');
+  const text='> agent.run() — 监控 Polymarket BTC 5min 预测市场，三档策略自动执行';
+  let i=0;
+  function type(){if(i<text.length){el.textContent+=text.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else{el.classList.remove('cursor')}}
+  type();
+})();
 </script>
 </body>
 </html>
