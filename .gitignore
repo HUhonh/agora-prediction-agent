@@ -7,3 +7,6 @@ recovery/
 venv/
 .venv/
 node_modules/
+order_history.json
+bought_token_ids.json
+ordered_markets.json
