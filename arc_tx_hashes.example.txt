@@ -1,5 +1,4 @@
 # Arc 铸造证明 Tx 示例（链上可查: https://testnet.arcscan.app/tx/{hash}）
-# 本地运行时自动生成 arc_tx_hashes.json，不提交
 1934e977ac34ad1af4b2c113a2e20e4c41dca4f202233581a580262a87fd77b3
 6b69a50e51b4ee6759e4f0032f4cc82096a35a933cf3d98c2908f9693f7a16c0
 9eaf948cb9a8e53e9931393f9d1c40482e3a6056ab29edfb68f7e7fbe6a4114a
