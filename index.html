@@ -41,6 +41,10 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 2s infinite}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
 .btn:hover{background:var(--blue);border-color:var(--blue);color:#000;box-shadow:0 0 12px rgba(0,188,255,.4)}
+.btn-deposit{background:var(--neon);color:#000;border-color:var(--neon);font-weight:700}.btn-deposit:hover{box-shadow:0 0 15px var(--neon)}
+.btn-withdraw{background:transparent;color:var(--blue);border:1px solid var(--blue)}.btn-withdraw:hover{background:rgba(0,188,255,.1)}
+.input-fund{display:flex;gap:8px;margin:12px 0}.input-fund input{flex:1;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:monospace;font-size:14px;outline:none;transition:border .2s}.input-fund input:focus{border-color:var(--blue)}
+.fund-status{font-size:12px;color:var(--muted);margin-top:8px;min-height:18px}
 .term{font-family:monospace;font-size:13px;color:var(--neon);padding:16px 20px;background:rgba(187,243,81,.03);border:1px solid rgba(187,243,81,.1);border-radius:6px;margin-bottom:24px;text-shadow:0 0 4px rgba(187,243,81,.4)}
 .cursor{border-right:2px solid var(--neon);animation:blink .8s infinite;padding-right:2px}
 .footer{border-top:1px solid var(--border);padding:24px 32px;text-align:center;font-size:12px;color:var(--muted)}
@@ -85,6 +89,18 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     </div>
   </div>
 
+  <h2 style="margin-top:32px">Agent Funding</h2>
+  <div class="panel" id="funding-panel">
+    <div class="stat-row"><span class="stat-label full">Agent Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px">0x1E17...7C90</span></div>
+    <div class="stat-row"><span class="stat-label full">Agent Balance</span><span class="stat-value" style="color:var(--neon);font-weight:700" id="agent-bal">—</span></div>
+    <div class="input-fund">
+      <input type="number" id="fund-amount" placeholder="Amount (ARC)" step="0.1" min="0">
+      <button class="btn btn-deposit" onclick="depositARC()">Deposit</button>
+      <button class="btn btn-withdraw" onclick="withdrawARC()">Withdraw</button>
+    </div>
+    <div class="fund-status" id="fund-status"></div>
+  </div>
+
   <h2 style="margin-top:32px">Strategy</h2>
   <div class="panel">
     <div class="stat-row"><span class="stat-label full">Combo 1</span><span class="stat-value">Time&lt;2min, Price 0.8–0.97, BTC&gt;$30</span></div>
@@ -122,6 +138,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 <script>
 const ARC_RPC='https://rpc.testnet.arc.network';
 const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[ARC_RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
+const ARC_AGENT='0x1E17628df3a0c079884526cA026952DB70157C90';
 let provider=null,signer=null,address=null;
 
 async function connectWallet(){
@@ -146,6 +163,36 @@ function disconnectWallet(){
   document.getElementById('disconnect-btn').style.display='none';
 }
 
+async function updateAgentBal(){
+  try{
+    const p=provider||new ethers.JsonRpcProvider(ARC_RPC);
+    const bal=await p.getBalance(ARC_AGENT);
+    document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' ARC';
+  }catch(e){document.getElementById('agent-bal').textContent='—'}
+}
+
+async function depositARC(){
+  const amt=document.getElementById('fund-amount').value;
+  const st=document.getElementById('fund-status');
+  if(!amt||amt<=0){st.textContent='Enter valid amount';st.style.color='#ff4444';return}
+  if(!signer){st.textContent='Connect wallet first';st.style.color='#ff4444';return}
+  try{
+    st.textContent='Sending...';st.style.color='var(--blue)';
+    const tx=await signer.sendTransaction({to:ARC_AGENT,value:ethers.parseEther(amt)});
+    st.textContent='Confirming: '+tx.hash.slice(0,10)+'...';
+    await tx.wait();
+    st.textContent='Deposit successful!';st.style.color='var(--neon)';
+    document.getElementById('fund-amount').value='';
+    updateAgentBal();
+  }catch(e){st.textContent=e.message||'Cancelled';st.style.color='#ff4444'}
+}
+
+function withdrawARC(){
+  const st=document.getElementById('fund-status');
+  st.innerHTML='⚠️ Withdraw requires private key. Use CLI: <code style="color:var(--blue)">arc trade transfer &lt;addr&gt; &lt;amt&gt;</code>';
+  st.style.color='var(--muted)';
+}
+
 let lastPrice=0;
 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()}).catch(()=>document.getElementById('btc').textContent='—');
@@ -153,6 +200,8 @@ setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSD
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
 (function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — 监控 Polymarket BTC 5min 预测市场，三档策略自动执行';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+
+updateAgentBal();
 </script>
 </body>
 </html>
