@@ -81,6 +81,24 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .param-num{width:58px;background:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--neon);font-family:monospace;font-size:13px;text-align:center;outline:none;transition:border .2s}
 .param-num:focus{border-color:var(--blue)}
 
+/* CLI Terminal */
+#cli-output{background:#050505;border-radius:6px;padding:14px 16px;min-height:160px;max-height:380px;overflow-y:auto;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;font-size:13px;line-height:1.7;margin-bottom:10px}
+#cli-output::-webkit-scrollbar{width:4px}
+#cli-output::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.cli-line{margin:2px 0;word-break:break-all}
+.cli-dim{color:var(--muted)}
+.cli-out{color:var(--text)}
+.cli-ok{color:var(--neon)}
+.cli-err{color:var(--red)}
+.cli-cmd{color:var(--blue);cursor:pointer}
+.cli-cmd:hover{text-decoration:underline}
+.cli-hash{color:var(--blue)}
+.cli-val{color:var(--neon)}
+.cli-input-row{display:flex;align-items:center;gap:8px}
+.cli-prompt{color:var(--neon);font-family:monospace;font-weight:700;font-size:14px}
+#cli-input{flex:1;background:transparent;border:none;color:var(--text);font-family:'Cascadia Code','Fira Code',monospace;font-size:13px;padding:6px 0;outline:none}
+#cli-input::placeholder{color:var(--muted)}
+
 @media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
 </style>
 </head>
@@ -108,7 +126,20 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--neon)" id="wallet-bal">—</span></div>
   </div>
 
-  <h2>Agent Status</h2>
+  <h2>Arc CLI Terminal</h2>
+  <div class="panel" id="cli-panel" onclick="document.getElementById('cli-input').focus()">
+    <div id="cli-output">
+      <div class="cli-line cli-dim">Arc CLI v0.1 — type <span class="cli-cmd">help</span> for commands</div>
+      <div class="cli-line cli-dim">Connected to Arc Testnet (chain 5042002)</div>
+      <div class="cli-line cli-dim">Connect wallet to start →</div>
+    </div>
+    <div class="cli-input-row">
+      <span class="cli-prompt">&gt;</span>
+      <input type="text" id="cli-input" placeholder="type command..." autofocus autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">Agent Status</h2>
   <div class="grid">
     <div class="panel">
       <div class="stat-row"><span class="stat-label">Agent ID</span><span class="stat-value">ERC-8004 #7824</span></div>
@@ -314,6 +345,7 @@ async function connectWallet(){
       document.getElementById('setup-section').style.display='block';
     }
     await updateAgentBal();
+    cliPrint('Wallet connected: '+shorten(address),'cli-ok');
   }catch(e){console.error(e)}
 }
 
@@ -325,6 +357,7 @@ function disconnectWallet(){
   document.getElementById('agent-addr').textContent='—';
   document.getElementById('agent-bal').textContent='—';
   document.getElementById('setup-section').style.display='none';
+  cliPrint('Wallet disconnected','cli-dim');
 }
 
 async function updateAgentBal(){
@@ -468,6 +501,178 @@ async function confirmWithdraw(){
 
 let lastPrice=0;
 
+// ── CLI Terminal ──
+let cliHistory=[],cliIdx=-1,tempInput='';
+const cliInput=document.getElementById('cli-input');
+const cliOutput=document.getElementById('cli-output');
+
+function cliPrint(text,cls='cli-out'){const d=document.createElement('div');d.className='cli-line '+cls;d.innerHTML=text;cliOutput.appendChild(d);cliOutput.scrollTop=cliOutput.scrollHeight}
+function cliLink(hash){return '<a class="cli-hash" href="https://testnet.arcscan.app/tx/'+hash+'" target="_blank">'+hash.slice(0,10)+'...'+hash.slice(-6)+'</a>'}
+
+cliInput.addEventListener('keydown',async e=>{
+  if(e.key==='Enter'){
+    const cmd=cliInput.value.trim();
+    if(cmd){cliHistory.push(cmd);cliIdx=cliHistory.length;cliPrint('<span class="cli-prompt">&gt;</span> '+cmd,'cli-dim')}
+    cliInput.value='';
+    if(cmd) await runCommand(cmd);
+  }else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    if(cliIdx===cliHistory.length) tempInput=cliInput.value;
+    if(cliIdx>0){cliIdx--;cliInput.value=cliHistory[cliIdx]}
+  }else if(e.key==='ArrowDown'){
+    e.preventDefault();
+    if(cliIdx<cliHistory.length-1){cliIdx++;cliInput.value=cliHistory[cliIdx]}
+    else{cliIdx=cliHistory.length;cliInput.value=tempInput}
+  }
+});
+
+async function runCommand(raw){
+  const args=raw.match(/(?:[^\s"]+|"[^"]*")+/g)||[];
+  const cmd=(args[0]||'').toLowerCase();
+
+  try{
+    switch(cmd){
+      case 'help':
+        cliPrint('Available commands:');
+        cliPrint('  <span class="cli-cmd">help</span>                     Show this help','cli-dim');
+        cliPrint('  <span class="cli-cmd">balance</span> [addr]           Check balance (default: your wallet)','cli-dim');
+        cliPrint('  <span class="cli-cmd">agent</span> balance           Check agent wallet balance','cli-dim');
+        cliPrint('  <span class="cli-cmd">agent</span> deposit &lt;amt&gt;   Deposit USDC to agent wallet','cli-dim');
+        cliPrint('  <span class="cli-cmd">agent</span> withdraw &lt;amt&gt;  Withdraw USDC from agent wallet','cli-dim');
+        cliPrint('  <span class="cli-cmd">gas</span>                      Show gas prices','cli-dim');
+        cliPrint('  <span class="cli-cmd">block</span> [num]              Show block info (default: latest)','cli-dim');
+        cliPrint('  <span class="cli-cmd">tx</span> &lt;hash&gt;             Show transaction status','cli-dim');
+        cliPrint('  <span class="cli-cmd">transfer</span> &lt;to&gt; &lt;amt&gt; Send USDC to address','cli-dim');
+        cliPrint('  <span class="cli-cmd">network</span>                  Show network info','cli-dim');
+        cliPrint('  <span class="cli-cmd">price</span>                    Show BTC price','cli-dim');
+        cliPrint('  <span class="cli-cmd">clear</span>                    Clear terminal','cli-dim');
+        break;
+
+      case 'balance':
+        await cmdBalance(args[1]);
+        break;
+      case 'agent':
+        await cmdAgent(args.slice(1));
+        break;
+      case 'gas':
+        await cmdGas();
+        break;
+      case 'block':
+        await cmdBlock(args[1]);
+        break;
+      case 'tx':
+        await cmdTx(args[1]);
+        break;
+      case 'transfer':
+        await cmdTransfer(args[1],args[2]);
+        break;
+      case 'network':
+        cmdNetwork();
+        break;
+      case 'price':
+        cliPrint('BTC/USDT: $'+lastPrice.toLocaleString(),'cli-ok');
+        break;
+      case 'clear':
+        cliOutput.innerHTML='';cliPrint('Cleared','cli-dim');
+        break;
+      default:
+        cliPrint('Unknown command: '+cmd+' — type <span class="cli-cmd">help</span>','cli-err');
+    }
+  }catch(e){
+    cliPrint('Error: '+(e.reason||e.message||e),'cli-err');
+  }
+}
+
+async function cmdBalance(target){
+  if(!provider){cliPrint('Connect wallet first','cli-err');return}
+  const addr=target||address;
+  if(!ethers.isAddress(addr)){cliPrint('Invalid address: '+addr,'cli-err');return}
+  const bal=await provider.getBalance(addr);
+  cliPrint(addr+'  <span class="cli-val">'+Number(ethers.formatEther(bal)).toFixed(6)+' USDC</span>','cli-ok');
+}
+
+async function cmdAgent(sub){
+  const act=(sub[0]||'').toLowerCase();
+  if(act==='balance'){
+    const a=getAgentAddress();
+    if(!a){cliPrint('No agent wallet. Connect wallet to create one.','cli-err');return}
+    const p=new ethers.JsonRpcProvider(ARC_RPC);
+    const bal=await p.getBalance(a);
+    cliPrint(a+'  <span class="cli-val">'+Number(ethers.formatEther(bal)).toFixed(6)+' USDC</span>','cli-ok');
+  }else if(act==='deposit'){
+    const amt=sub[1];if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: agent deposit <amount>','cli-err');return}
+    document.getElementById('fund-amount').value=amt;
+    await depositARC();
+  }else if(act==='withdraw'){
+    const amt=sub[1];if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: agent withdraw <amount>','cli-err');return}
+    document.getElementById('fund-amount').value=amt;
+    showWithdrawModal();
+  }else{
+    cliPrint('Usage: agent <balance|deposit|withdraw>','cli-err');
+  }
+}
+
+async function cmdGas(){
+  if(!provider){cliPrint('Connect wallet first','cli-err');return}
+  const fee=await provider.getFeeData();
+  cliPrint('Gas Price: <span class="cli-val">'+Number(ethers.formatUnits(fee.gasPrice||0,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
+  if(fee.maxFeePerGas) cliPrint('Max Fee: <span class="cli-val">'+Number(ethers.formatUnits(fee.maxFeePerGas,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
+  if(fee.maxPriorityFeePerGas) cliPrint('Priority Fee: <span class="cli-val">'+Number(ethers.formatUnits(fee.maxPriorityFeePerGas,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
+}
+
+async function cmdBlock(num){
+  if(!provider){cliPrint('Connect wallet first','cli-err');return}
+  const bn=num?parseInt(num):await provider.getBlockNumber();
+  const block=await provider.getBlock(bn);
+  if(!block){cliPrint('Block not found: '+bn,'cli-err');return}
+  cliPrint('Block #'+block.number,'cli-ok');
+  cliPrint('  Hash: '+block.hash,'cli-dim');
+  cliPrint('  Timestamp: '+new Date(Number(block.timestamp)*1000).toLocaleString(),'cli-dim');
+  cliPrint('  Transactions: '+block.transactions.length,'cli-dim');
+}
+
+async function cmdTx(hash){
+  if(!hash){cliPrint('Usage: tx <hash>','cli-err');return}
+  const p=new ethers.JsonRpcProvider(ARC_RPC);
+  const receipt=await p.getTransactionReceipt(hash);
+  if(!receipt){cliPrint('Transaction pending or not found','cli-err');return}
+  cliPrint('TX: '+cliLink(hash),'cli-ok');
+  cliPrint('  Status: '+(receipt.status===1?'<span class="cli-ok">Success</span>':'<span class="cli-err">Failed</span>'),'cli-dim');
+  cliPrint('  Block: #'+receipt.blockNumber,'cli-dim');
+  cliPrint('  From: '+receipt.from,'cli-dim');
+  cliPrint('  To: '+receipt.to,'cli-dim');
+}
+
+async function cmdTransfer(to,amt){
+  if(!signer){cliPrint('Connect wallet first','cli-err');return}
+  if(!to||!ethers.isAddress(to)){cliPrint('Usage: transfer <address> <amount>','cli-err');return}
+  if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: transfer <address> <amount>','cli-err');return}
+  cliPrint('Sending '+amt+' USDC to '+to+'...','cli-dim');
+  const tx=await signer.sendTransaction({to,value:ethers.parseEther(amt)});
+  cliPrint('Submitted: '+cliLink(tx.hash),'cli-ok');
+  await tx.wait();
+  cliPrint('Confirmed! '+cliLink(tx.hash),'cli-ok');
+  if(address) document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+}
+
+function cmdNetwork(){
+  cliPrint('Network: Arc Testnet','cli-ok');
+  cliPrint('  Chain ID: 5042002 (0x4CEF52)','cli-dim');
+  cliPrint('  RPC: '+ARC_RPC,'cli-dim');
+  cliPrint('  Currency: USDC (18 decimals)','cli-dim');
+  cliPrint('  Explorer: testnet.arcscan.app','cli-dim');
+}
+
+// Clickable help commands in output
+cliOutput.addEventListener('click',e=>{
+  if(e.target.classList.contains('cli-cmd')){
+    cliInput.value=e.target.textContent;cliInput.focus();
+  }else{
+    cliInput.focus();
+  }
+});
+
+
 const DEFAULT_STRATEGY={
   c1_time:2,c1_pmin:0.80,c1_pmax:0.97,c1_btc:30,
   c2_time:3,c2_pmin:0.80,c2_pmax:0.97,c2_btc:55,
@@ -513,7 +718,7 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Monitor Polymarket BTC 5min prediction market, 3-tier strategy auto-execute';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Arc CLI Terminal ready. Connect wallet and type help to start.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
 updateAgentBal();
 loadStrategy();
