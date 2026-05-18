@@ -6,7 +6,7 @@
 <title>Agora Prediction Agent</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--neon:#BBF351;--blue:#00BCFF;--bg:#000;--panel:#0a0a0a;--border:#1a1a1a;--text:#eee;--muted:#999}
+:root{--neon:#BBF351;--blue:#00BCFF;--bg:#000;--panel:#0a0a0a;--border:#1a1a1a;--text:#eee;--muted:#999;--red:#ff4444;--orange:#ff8c00}
 *,*::before,*::after{box-sizing:border-box;margin:0}
 body{font-family:'Roboto',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
 header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;position:relative;z-index:1;backdrop-filter:blur(10px)}
@@ -25,6 +25,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px var(--neon)}50%{opacity:.6;box-shadow:0 0 12px var(--neon)}}
 @keyframes blink{0%,100%{border-color:var(--neon)}50%{border-color:transparent}}
+@keyframes spin{to{transform:rotate(360deg)}}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:all .3s}
 .panel:hover{border-color:rgba(187,243,81,.2);box-shadow:0 0 20px rgba(187,243,81,.05)}
@@ -43,11 +44,36 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .btn:hover{background:var(--blue);border-color:var(--blue);color:#000;box-shadow:0 0 12px rgba(0,188,255,.4)}
 .btn-deposit{background:var(--neon);color:#000;border-color:var(--neon);font-weight:700}.btn-deposit:hover{box-shadow:0 0 15px var(--neon)}
 .btn-withdraw{background:transparent;color:var(--blue);border:1px solid var(--blue)}.btn-withdraw:hover{background:rgba(0,188,255,.1)}
+.btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
 .input-fund{display:flex;gap:8px;margin:12px 0}.input-fund input{flex:1;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:monospace;font-size:14px;outline:none;transition:border .2s}.input-fund input:focus{border-color:var(--blue)}
 .fund-status{font-size:12px;color:var(--muted);margin-top:8px;min-height:18px}
 .term{font-family:monospace;font-size:13px;color:var(--neon);padding:16px 20px;background:rgba(187,243,81,.03);border:1px solid rgba(187,243,81,.1);border-radius:6px;margin-bottom:24px;text-shadow:0 0 4px rgba(187,243,81,.4)}
 .cursor{border-right:2px solid var(--neon);animation:blink .8s infinite;padding-right:2px}
 .footer{border-top:1px solid var(--border);padding:24px 32px;text-align:center;font-size:12px;color:var(--muted)}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;justify-content:center;align-items:center;backdrop-filter:blur(4px)}
+.modal-overlay.active{display:flex;animation:fadein .2s ease-out}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px;width:90%;max-width:440px;box-shadow:0 0 40px rgba(0,188,255,.1)}
+.modal h3{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text)}
+.modal .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+.modal .form-group{margin-bottom:16px}
+.modal .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.modal .form-group input{width:100%;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:monospace;font-size:14px;outline:none;transition:border .2s}
+.modal .form-group input:focus{border-color:var(--blue)}
+.modal .form-group input:read-only{opacity:.7;cursor:default}
+.modal .modal-actions{display:flex;gap:10px;margin-top:24px}
+.modal .modal-actions .btn{flex:1;justify-content:center;padding:10px 16px;font-size:14px}
+.modal .btn-cancel{background:transparent;border-color:var(--border);color:var(--muted)}
+.modal .btn-cancel:hover{background:var(--border);color:var(--text);box-shadow:none}
+.modal .btn-confirm{background:var(--blue);color:#000;border-color:var(--blue);font-weight:700}
+.modal .btn-confirm:hover{box-shadow:0 0 15px var(--blue)}
+.modal .btn-confirm.danger{background:var(--red);border-color:var(--red)}
+.modal .btn-confirm.danger:hover{box-shadow:0 0 15px var(--red)}
+
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+.tx-link{font-family:monospace;font-size:11px;word-break:break-all;color:var(--neon)}
+
 @media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
 </style>
 </head>
@@ -71,7 +97,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 
 <main>
   <div id="wallet-info" style="display:none;margin-bottom:24px" class="panel">
-    <div class="stat-row"><span class="stat-label full">Connected</span><span style="font-family:monospace;font-size:12px;color:var(--muted)" id="wallet-addr">—</span></div>
+    <div class="stat-row"><span class="stat-label full">Connected Wallet</span><span style="font-family:monospace;font-size:12px;color:var(--muted)" id="wallet-addr">—</span></div>
     <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--neon)" id="wallet-bal">—</span></div>
   </div>
 
@@ -91,14 +117,24 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 
   <h2 style="margin-top:32px">Agent Funding</h2>
   <div class="panel" id="funding-panel">
-    <div class="stat-row"><span class="stat-label full">Agent Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px">0x1E17...7C90</span></div>
+    <div class="stat-row"><span class="stat-label full">Your Agent Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="agent-addr">—</span></div>
     <div class="stat-row"><span class="stat-label full">Agent Balance</span><span class="stat-value" style="color:var(--neon);font-weight:700" id="agent-bal">—</span></div>
-    <div class="input-fund">
-      <input type="number" id="fund-amount" placeholder="Amount (ARC)" step="0.1" min="0">
-      <button class="btn btn-deposit" onclick="depositARC()">Deposit</button>
-      <button class="btn btn-withdraw" onclick="withdrawARC()">Withdraw</button>
+    <div class="input-fund" id="fund-inputs">
+      <input type="number" id="fund-amount" placeholder="Amount (USDC)" step="0.01" min="0">
+      <button class="btn btn-deposit" id="deposit-btn" onclick="depositARC()">Deposit</button>
+      <button class="btn btn-withdraw" id="withdraw-btn" onclick="showWithdrawModal()">Withdraw</button>
     </div>
     <div class="fund-status" id="fund-status"></div>
+  </div>
+
+  <div class="panel" id="setup-section" style="display:none;margin-top:16px;border-color:var(--blue)">
+    <div class="stat-row"><span class="stat-label full" style="color:var(--blue)">First-time Setup — Create Agent Password</span></div>
+    <div class="input-fund">
+      <input type="password" id="setup-password" placeholder="Password (min 8 chars)" style="font-family:inherit">
+      <input type="password" id="setup-password2" placeholder="Confirm password" style="font-family:inherit">
+    </div>
+    <button class="btn btn-deposit" onclick="createAgentPassword()" style="width:100%">Create Agent Wallet</button>
+    <div class="fund-status" id="setup-status"></div>
   </div>
 
   <h2 style="margin-top:32px">Strategy</h2>
@@ -134,12 +170,87 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 </main>
 <footer class="footer">Built for Agora Agents Hackathon &middot; Canteen &times; Circle &times; Arc</footer>
 
+<div class="modal-overlay" id="withdraw-modal">
+  <div class="modal">
+    <h3>Confirm Withdrawal</h3>
+    <p class="modal-sub">Send USDC from your agent wallet back to your connected wallet</p>
+    <div class="form-group">
+      <label>From (Agent Wallet)</label>
+      <input type="text" id="modal-from" readonly>
+    </div>
+    <div class="form-group">
+      <label>To (Your Wallet)</label>
+      <input type="text" id="modal-to" readonly>
+    </div>
+    <div class="form-group">
+      <label>Amount</label>
+      <input type="text" id="modal-amount" readonly>
+    </div>
+    <div class="form-group">
+      <label>Estimated Gas</label>
+      <input type="text" id="modal-gas" readonly value="~0.0001 USDC">
+    </div>
+    <div class="form-group">
+      <label>Agent Password</label>
+      <input type="password" id="modal-password" placeholder="Enter your agent wallet password">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeWithdrawModal()">Cancel</button>
+      <button class="btn btn-confirm" id="confirm-withdraw-btn" onclick="confirmWithdraw()">Confirm Withdraw</button>
+    </div>
+    <div class="fund-status" id="modal-status" style="margin-top:12px"></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
 <script>
 const ARC_RPC='https://rpc.testnet.arc.network';
 const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[ARC_RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
-const ARC_AGENT='0x1E17628df3a0c079884526cA026952DB70157C90';
-let provider=null,signer=null,address=null;
+const AGENT_KEY_STORAGE='agora_agent_encrypted';
+const AGENT_SALT_STORAGE='agora_agent_salt';
+const AGENT_IV_STORAGE='agora_agent_iv';
+const AGENT_ADDR_STORAGE='agora_agent_addr';
+
+let provider=null,signer=null,address=null,agentWallet=null;
+
+function buf2hex(b){return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
+function hex2buf(h){return new Uint8Array(h.match(/.{1,2}/g).map(b=>parseInt(b,16))).buffer;}
+
+function hasAgentWallet(){return !!localStorage.getItem(AGENT_KEY_STORAGE);}
+function getAgentAddress(){return localStorage.getItem(AGENT_ADDR_STORAGE);}
+
+async function encryptPrivateKey(pk,password){
+  const enc=new TextEncoder();
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['encrypt']);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(pk));
+  return {encrypted:buf2hex(new Uint8Array(encrypted)),salt:buf2hex(salt),iv:buf2hex(iv)};
+}
+
+async function decryptPrivateKey(password){
+  const enc=new TextEncoder();
+  const salt=hex2buf(localStorage.getItem(AGENT_SALT_STORAGE));
+  const iv=hex2buf(localStorage.getItem(AGENT_IV_STORAGE));
+  const encrypted=hex2buf(localStorage.getItem(AGENT_KEY_STORAGE));
+  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['decrypt']);
+  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,encrypted);
+  return new TextDecoder().decode(decrypted);
+}
+
+async function setupAgentWallet(password){
+  const w=ethers.Wallet.createRandom();
+  const {encrypted,salt,iv}=await encryptPrivateKey(w.privateKey,password);
+  localStorage.setItem(AGENT_KEY_STORAGE,encrypted);
+  localStorage.setItem(AGENT_SALT_STORAGE,salt);
+  localStorage.setItem(AGENT_IV_STORAGE,iv);
+  localStorage.setItem(AGENT_ADDR_STORAGE,w.address);
+  return w;
+}
+
+function shorten(a){return a.slice(0,6)+'...'+a.slice(-4);}
 
 async function connectWallet(){
   if(!window.ethereum){alert('Install MetaMask');return}
@@ -149,48 +260,169 @@ async function connectWallet(){
       window.ethereum.request({method:'wallet_addEthereumChain',params:[ARC_CHAIN]})
     );
     signer=await provider.getSigner();address=await signer.getAddress();
-    document.getElementById('wallet-addr').textContent=address.slice(0,6)+'...'+address.slice(-4);
+    document.getElementById('wallet-addr').textContent=shorten(address);
     document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
     document.getElementById('wallet-info').style.display='block';
     document.getElementById('connect-btn').style.display='none';
     document.getElementById('disconnect-btn').style.display='inline-flex';
+    if(hasAgentWallet()){
+      document.getElementById('agent-addr').textContent=shorten(getAgentAddress());
+      document.getElementById('setup-section').style.display='none';
+    }else{
+      document.getElementById('agent-addr').textContent='Not created';
+      document.getElementById('setup-section').style.display='block';
+    }
+    await updateAgentBal();
   }catch(e){console.error(e)}
 }
+
 function disconnectWallet(){
-  provider=null;signer=null;address=null;
+  provider=null;signer=null;address=null;agentWallet=null;
   document.getElementById('wallet-info').style.display='none';
   document.getElementById('connect-btn').style.display='inline-flex';
   document.getElementById('disconnect-btn').style.display='none';
+  document.getElementById('agent-addr').textContent='—';
+  document.getElementById('agent-bal').textContent='—';
+  document.getElementById('setup-section').style.display='none';
 }
 
 async function updateAgentBal(){
+  const addr=getAgentAddress();
+  if(!addr){document.getElementById('agent-bal').textContent='—';return}
   try{
-    const p=provider||new ethers.JsonRpcProvider(ARC_RPC);
-    const bal=await p.getBalance(ARC_AGENT);
-    document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' ARC';
+    const p=new ethers.JsonRpcProvider(ARC_RPC);
+    const bal=await p.getBalance(addr);
+    document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
+    document.getElementById('agent-addr').textContent=shorten(addr);
   }catch(e){document.getElementById('agent-bal').textContent='—'}
+}
+
+async function createAgentPassword(){
+  const pw=document.getElementById('setup-password').value;
+  const pw2=document.getElementById('setup-password2').value;
+  const st=document.getElementById('setup-status');
+  if(!pw||pw.length<8){st.textContent='Password must be at least 8 characters';st.style.color='var(--red)';return}
+  if(pw!==pw2){st.textContent='Passwords do not match';st.style.color='var(--red)';return}
+  try{
+    st.innerHTML='<span class="spinner"></span> Creating agent wallet...';st.style.color='var(--blue)';
+    const w=await setupAgentWallet(pw);
+    agentWallet=w;
+    document.getElementById('setup-section').style.display='none';
+    document.getElementById('agent-addr').textContent=shorten(w.address);
+    st.textContent='Agent wallet created! Save your password - it cannot be recovered.';st.style.color='var(--neon)';
+    setTimeout(async()=>{st.textContent='';await updateAgentBal();},4000);
+  }catch(e){st.textContent=e.message||'Creation failed';st.style.color='var(--red)'}
 }
 
 async function depositARC(){
   const amt=document.getElementById('fund-amount').value;
   const st=document.getElementById('fund-status');
-  if(!amt||amt<=0){st.textContent='Enter valid amount';st.style.color='#ff4444';return}
-  if(!signer){st.textContent='Connect wallet first';st.style.color='#ff4444';return}
+  if(!amt||amt<=0){st.textContent='Enter valid amount';st.style.color='var(--red)';return}
+  if(!signer){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
+  const toAddr=getAgentAddress();
+  if(!toAddr){st.textContent='Create agent wallet first';st.style.color='var(--red)';return}
   try{
-    st.textContent='Sending...';st.style.color='var(--blue)';
-    const tx=await signer.sendTransaction({to:ARC_AGENT,value:ethers.parseEther(amt)});
-    st.textContent='Confirming: '+tx.hash.slice(0,10)+'...';
+    st.innerHTML='<span class="spinner"></span> Sending...';st.style.color='var(--blue)';
+    const tx=await signer.sendTransaction({to:toAddr,value:ethers.parseEther(amt)});
+    st.innerHTML='Confirming: <span class="tx-link">'+tx.hash.slice(0,10)+'...</span>';
     await tx.wait();
-    st.textContent='Deposit successful!';st.style.color='var(--neon)';
+    st.innerHTML='<span style="color:var(--neon)">Deposit successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View</a>';
+    st.style.color='var(--neon)';
     document.getElementById('fund-amount').value='';
-    updateAgentBal();
-  }catch(e){st.textContent=e.message||'Cancelled';st.style.color='#ff4444'}
+    await updateAgentBal();
+    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+  }catch(e){st.textContent=e.reason||e.message||'Cancelled';st.style.color='var(--red)'}
 }
 
-function withdrawARC(){
-  const st=document.getElementById('fund-status');
-  st.innerHTML='⚠️ Withdraw requires private key. Use CLI: <code style="color:var(--blue)">arc trade transfer &lt;addr&gt; &lt;amt&gt;</code>';
-  st.style.color='var(--muted)';
+function showWithdrawModal(){
+  if(!signer){alert('Connect wallet first');return}
+  if(!hasAgentWallet()){document.getElementById('fund-status').textContent='Create agent wallet first';document.getElementById('fund-status').style.color='var(--red)';return}
+  const amt=document.getElementById('fund-amount').value;
+  if(!amt||amt<=0){document.getElementById('fund-status').textContent='Enter amount to withdraw';document.getElementById('fund-status').style.color='var(--red)';return}
+  document.getElementById('modal-from').value=getAgentAddress();
+  document.getElementById('modal-to').value=address;
+  document.getElementById('modal-amount').value=amt+' USDC';
+  document.getElementById('modal-password').value='';
+  document.getElementById('modal-status').textContent='';
+  document.getElementById('confirm-withdraw-btn').disabled=false;
+  document.getElementById('confirm-withdraw-btn').classList.remove('danger');
+  document.getElementById('withdraw-modal').classList.add('active');
+}
+
+function closeWithdrawModal(){
+  document.getElementById('withdraw-modal').classList.remove('active');
+  agentWallet=null;
+}
+
+async function confirmWithdraw(){
+  const btn=document.getElementById('confirm-withdraw-btn');
+  const ms=document.getElementById('modal-status');
+  const amtStr=document.getElementById('fund-amount').value;
+  const password=document.getElementById('modal-password').value;
+  if(!amtStr||parseFloat(amtStr)<=0){ms.textContent='Invalid amount';ms.style.color='var(--red)';return}
+  if(!password){ms.textContent='Enter your agent password';ms.style.color='var(--red)';return}
+  if(!address){ms.textContent='Connected wallet not found';ms.style.color='var(--red)';return}
+
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span> Decrypting...';
+  btn.classList.add('danger');
+  ms.textContent='';
+
+  try{
+    const pk=await decryptPrivateKey(password);
+    const aw=new ethers.Wallet(pk);
+    agentWallet=aw;
+
+    const agentSigner=aw.connect(new ethers.JsonRpcProvider(ARC_RPC));
+    const agentBal=await agentSigner.provider.getBalance(aw.address);
+    const amtWei=ethers.parseEther(amtStr);
+
+    if(agentBal<amtWei){ms.textContent='Insufficient agent balance';ms.style.color='var(--red)';btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');agentWallet=null;return}
+
+    btn.innerHTML='<span class="spinner"></span> Signing transaction...';
+    const feeData=await agentSigner.provider.getFeeData();
+    const tx=await agentSigner.sendTransaction({
+      to:address,
+      value:amtWei,
+      gasLimit:21000n,
+      maxFeePerGas:feeData.maxFeePerGas||50000000000n,
+      maxPriorityFeePerGas:feeData.maxPriorityFeePerGas||2000000000n
+    });
+
+    ms.innerHTML='<span style="color:var(--blue)">Submitted: </span><a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+shorten(tx.hash)+'</a>';
+    ms.style.color='var(--text)';
+
+    await tx.wait();
+    ms.innerHTML='<span style="color:var(--neon)">Withdrawal successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View on ArcScan</a>';
+    ms.style.color='var(--neon)';
+
+    document.getElementById('fund-status').innerHTML='<span style="color:var(--neon)">Withdrew '+amtStr+' USDC</span>';
+    document.getElementById('fund-status').style.color='var(--neon)';
+    document.getElementById('fund-amount').value='';
+    agentWallet=null;
+
+    setTimeout(async()=>{
+      await updateAgentBal();
+      if(provider&&address){
+        document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+      }
+      closeWithdrawModal();
+      btn.disabled=false;
+      btn.innerHTML='Confirm Withdraw';
+      btn.classList.remove('danger');
+    },3000);
+  }catch(e){
+    if(e instanceof DOMException&&e.name==='OperationError'){
+      ms.textContent='Invalid password';ms.style.color='var(--red)';
+    }else{
+      ms.textContent=e.reason||e.message||'Withdrawal failed';
+      ms.style.color='var(--red)';
+    }
+    btn.disabled=false;
+    btn.innerHTML='Confirm Withdraw';
+    btn.classList.remove('danger');
+    agentWallet=null;
+  }
 }
 
 let lastPrice=0;
@@ -199,7 +431,7 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — 监控 Polymarket BTC 5min 预测市场，三档策略自动执行';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Monitor Polymarket BTC 5min prediction market, 3-tier strategy auto-execute';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
 updateAgentBal();
 </script>

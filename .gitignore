@@ -1,13 +1,19 @@
+# Secrets
 .env
+*.pem
+entity_secret.txt
+
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-*.log
-recovery/
-venv/
 .venv/
-node_modules/
-order_history.json
-bought_token_ids.json
-ordered_markets.json
-arc_tx_hashes.json
+venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
