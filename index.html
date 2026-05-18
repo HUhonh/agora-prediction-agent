@@ -129,7 +129,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   <h2>Arc CLI Terminal</h2>
   <div class="panel" id="cli-panel" onclick="document.getElementById('cli-input').focus()">
     <div id="cli-output">
-      <div class="cli-line cli-dim">Arc CLI v0.2 — Try "查余额" or "帮助" to start</div>
+      <div class="cli-line cli-dim">Arc CLI v0.2 — DeepSeek LLM + regex. Try "查余额" or "帮助"</div>
       <div class="cli-line cli-dim">Connected to Arc Testnet (chain 5042002)</div>
       <div class="cli-line cli-dim">Connect wallet → type naturally → execute onchain</div>
     </div>
@@ -502,11 +502,12 @@ async function confirmWithdraw(){
 let lastPrice=0;
 
 // ── CLI Terminal ──
+const LLM_WORKER_URL=''; // Paste your Cloudflare Worker URL here, e.g. 'https://api.yourname.workers.dev'
 let cliHistory=[],cliIdx=-1,tempInput='';
 const cliInput=document.getElementById('cli-input');
 const cliOutput=document.getElementById('cli-output');
 
-function cliPrint(text,cls='cli-out'){const d=document.createElement('div');d.className='cli-line '+cls;d.innerHTML=text;cliOutput.appendChild(d);cliOutput.scrollTop=cliOutput.scrollHeight}
+function cliPrint(text,cls='cli-out'){const d=document.createElement('div');d.className='cli-line '+cls;d.innerHTML=text;cliOutput.appendChild(d);cliOutput.scrollTop=cliOutput.scrollHeight;return d}
 function cliLink(hash){return '<a class="cli-hash" href="https://testnet.arcscan.app/tx/'+hash+'" target="_blank">'+hash.slice(0,10)+'...'+hash.slice(-6)+'</a>'}
 
 cliInput.addEventListener('keydown',async e=>{
@@ -527,7 +528,60 @@ cliInput.addEventListener('keydown',async e=>{
 });
 
 async function runCommand(raw){
+  if(!provider&&!/^(help|帮助|怎么用|功能|命令|hi|hello|你好|嗨|clear|清屏|清理|network|网络|链|price|价格|btc)/i.test(raw)){
+    cliPrint('Connect wallet first to run commands','cli-err');return;
+  }
+
+  if(LLM_WORKER_URL){
+    const think=cliPrint('<span class="spinner"></span> Thinking...','cli-dim');
+    try{
+      const resp=await fetch(LLM_WORKER_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:raw})
+      });
+      think.remove();
+      if(resp.ok){
+        const json=await resp.json();
+        if(json.action&&json.action!=='unknown'){
+          cliPrint(json.reply||'Got it','cli-dim');
+          await execAction(json);
+          return;
+        }else if(json.reply){
+          cliPrint(json.reply,'cli-dim');return;
+        }
+      }
+    }catch(e){try{think.remove()}catch(_){}}
+  }
   await parseNL(raw);
+}
+
+async function execAction(json){
+  const {action,params={}}=json;
+  try{
+    switch(action){
+      case 'balance': await cmdBalance(params.address||null); break;
+      case 'agent_balance': await cmdAgent(['balance']); break;
+      case 'agent_deposit':
+        if(!params.amount){cliPrint('Amount?','cli-err');return}
+        document.getElementById('fund-amount').value=params.amount;
+        await depositARC();break;
+      case 'agent_withdraw':
+        if(!params.amount){cliPrint('Amount?','cli-err');return}
+        document.getElementById('fund-amount').value=params.amount;
+        showWithdrawModal();break;
+      case 'transfer':
+        if(!params.to||!params.amount){cliPrint('Need address and amount','cli-err');return}
+        await cmdTransfer(params.to,String(params.amount));break;
+      case 'gas': await cmdGas(); break;
+      case 'block': await cmdBlock(params.blockNumber||null); break;
+      case 'tx': await cmdTx(params.hash||''); break;
+      case 'price': cliPrint('BTC/USDT: $'+lastPrice.toLocaleString(),'cli-ok'); break;
+      case 'network': cmdNetwork(); break;
+      case 'help': parseNL('帮助'); break;
+      case 'clear': cliOutput.innerHTML='';cliPrint('Cleared','cli-dim'); break;
+      default: cliPrint('Command: '+action,'cli-dim');
+    }
+  }catch(e){cliPrint('Error: '+(e.reason||e.message||e),'cli-err')}
 }
 
 function extractAmount(txt){
@@ -550,13 +604,13 @@ async function parseNL(raw){
     cliPrint('  "查余额" / "我的钱包有多少钱"','cli-dim');
     cliPrint('  "存 5 USDC" / "充值 10"','cli-dim');
     cliPrint('  "提现 3" / "取回 2 个币"','cli-dim');
-    cliPrint('  "转账 0x... 5 USDC"','cli-dim');
-    cliPrint('  "手续费多少" / "gas"','cli-dim');
-    cliPrint('  "最新区块" / "BTC价格"','cli-dim');
+    cliPrint('  "转账 0x1234...5678 5 USDC"','cli-dim');
+    cliPrint('  "查一下 0xABCD... 的余额"','cli-dim');
+    cliPrint('  "手续费多少" / "最新区块" / "BTC价格"','cli-dim');
     cliPrint('  "网络信息" / "查看交易 0x..."','cli-dim');
-    cliPrint('  "清屏"','cli-dim');
+    cliPrint('  "清屏" / "你好"','cli-dim');
     cliPrint('');
-    cliPrint('Or use exact commands: help balance agent gas block tx transfer network price clear','cli-dim');
+    cliPrint('Also supports English: "check balance" "deposit 5" "gas price" etc.','cli-dim');
     return;
   }
 
@@ -759,7 +813,7 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Type naturally in the terminal below. Try "查余额" or "存5个USDC"';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Natural language CLI. Powered by DeepSeek LLM + regex fallback.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
 updateAgentBal();
 loadStrategy();
