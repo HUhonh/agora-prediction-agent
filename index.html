@@ -267,29 +267,21 @@ const AGENT_SALT_STORAGE='agora_agent_salt';
 const AGENT_IV_STORAGE='agora_agent_iv';
 const AGENT_ADDR_STORAGE='agora_agent_addr';
 
+function agentKey(base){return base+'_'+address;}
+
 let provider=null,signer=null,address=null,agentWallet=null;
 
 function buf2hex(b){return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
 function hex2buf(h){return new Uint8Array(h.match(/.{1,2}/g).map(b=>parseInt(b,16))).buffer;}
 
-function hasAgentWallet(){return !!localStorage.getItem(AGENT_KEY_STORAGE);}
-function getAgentAddress(){return localStorage.getItem(AGENT_ADDR_STORAGE);}
-
-async function encryptPrivateKey(pk,password){
-  const enc=new TextEncoder();
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
-  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['encrypt']);
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(pk));
-  return {encrypted:buf2hex(new Uint8Array(encrypted)),salt:buf2hex(salt),iv:buf2hex(iv)};
-}
+function hasAgentWallet(){return !!localStorage.getItem(agentKey(AGENT_KEY_STORAGE));}
+function getAgentAddress(){return localStorage.getItem(agentKey(AGENT_ADDR_STORAGE));}
 
 async function decryptPrivateKey(password){
   const enc=new TextEncoder();
-  const salt=hex2buf(localStorage.getItem(AGENT_SALT_STORAGE));
-  const iv=hex2buf(localStorage.getItem(AGENT_IV_STORAGE));
-  const encrypted=hex2buf(localStorage.getItem(AGENT_KEY_STORAGE));
+  const salt=hex2buf(localStorage.getItem(agentKey(AGENT_SALT_STORAGE)));
+  const iv=hex2buf(localStorage.getItem(agentKey(AGENT_IV_STORAGE)));
+  const encrypted=hex2buf(localStorage.getItem(agentKey(AGENT_KEY_STORAGE)));
   const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
   const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['decrypt']);
   const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,encrypted);
@@ -298,11 +290,16 @@ async function decryptPrivateKey(password){
 
 async function setupAgentWallet(password){
   const w=ethers.Wallet.createRandom();
-  const {encrypted,salt,iv}=await encryptPrivateKey(w.privateKey,password);
-  localStorage.setItem(AGENT_KEY_STORAGE,encrypted);
-  localStorage.setItem(AGENT_SALT_STORAGE,salt);
-  localStorage.setItem(AGENT_IV_STORAGE,iv);
-  localStorage.setItem(AGENT_ADDR_STORAGE,w.address);
+  const enc=new TextEncoder();
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['encrypt']);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(w.privateKey));
+  localStorage.setItem(agentKey(AGENT_KEY_STORAGE),buf2hex(new Uint8Array(encrypted)));
+  localStorage.setItem(agentKey(AGENT_SALT_STORAGE),buf2hex(salt));
+  localStorage.setItem(agentKey(AGENT_IV_STORAGE),buf2hex(iv));
+  localStorage.setItem(agentKey(AGENT_ADDR_STORAGE),w.address);
   return w;
 }
 
