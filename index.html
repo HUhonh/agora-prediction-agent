@@ -129,9 +129,9 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   <h2>Arc CLI Terminal</h2>
   <div class="panel" id="cli-panel" onclick="document.getElementById('cli-input').focus()">
     <div id="cli-output">
-      <div class="cli-line cli-dim">Arc CLI v0.1 — type <span class="cli-cmd">help</span> for commands</div>
+      <div class="cli-line cli-dim">Arc CLI v0.2 — Try "查余额" or "帮助" to start</div>
       <div class="cli-line cli-dim">Connected to Arc Testnet (chain 5042002)</div>
-      <div class="cli-line cli-dim">Connect wallet to start →</div>
+      <div class="cli-line cli-dim">Connect wallet → type naturally → execute onchain</div>
     </div>
     <div class="cli-input-row">
       <span class="cli-prompt">&gt;</span>
@@ -527,60 +527,101 @@ cliInput.addEventListener('keydown',async e=>{
 });
 
 async function runCommand(raw){
-  const args=raw.match(/(?:[^\s"]+|"[^"]*")+/g)||[];
-  const cmd=(args[0]||'').toLowerCase();
+  await parseNL(raw);
+}
 
-  try{
-    switch(cmd){
-      case 'help':
-        cliPrint('Available commands:');
-        cliPrint('  <span class="cli-cmd">help</span>                     Show this help','cli-dim');
-        cliPrint('  <span class="cli-cmd">balance</span> [addr]           Check balance (default: your wallet)','cli-dim');
-        cliPrint('  <span class="cli-cmd">agent</span> balance           Check agent wallet balance','cli-dim');
-        cliPrint('  <span class="cli-cmd">agent</span> deposit &lt;amt&gt;   Deposit USDC to agent wallet','cli-dim');
-        cliPrint('  <span class="cli-cmd">agent</span> withdraw &lt;amt&gt;  Withdraw USDC from agent wallet','cli-dim');
-        cliPrint('  <span class="cli-cmd">gas</span>                      Show gas prices','cli-dim');
-        cliPrint('  <span class="cli-cmd">block</span> [num]              Show block info (default: latest)','cli-dim');
-        cliPrint('  <span class="cli-cmd">tx</span> &lt;hash&gt;             Show transaction status','cli-dim');
-        cliPrint('  <span class="cli-cmd">transfer</span> &lt;to&gt; &lt;amt&gt; Send USDC to address','cli-dim');
-        cliPrint('  <span class="cli-cmd">network</span>                  Show network info','cli-dim');
-        cliPrint('  <span class="cli-cmd">price</span>                    Show BTC price','cli-dim');
-        cliPrint('  <span class="cli-cmd">clear</span>                    Clear terminal','cli-dim');
-        break;
+function extractAmount(txt){
+  const m=txt.match(/(\d+\.?\d*)/);
+  return m?parseFloat(m[1]):null;
+}
+function extractAddr(txt){
+  const m=txt.match(/0x[a-fA-F0-9]{40}/);
+  return m?m[0]:null;
+}
 
-      case 'balance':
-        await cmdBalance(args[1]);
-        break;
-      case 'agent':
-        await cmdAgent(args.slice(1));
-        break;
-      case 'gas':
-        await cmdGas();
-        break;
-      case 'block':
-        await cmdBlock(args[1]);
-        break;
-      case 'tx':
-        await cmdTx(args[1]);
-        break;
-      case 'transfer':
-        await cmdTransfer(args[1],args[2]);
-        break;
-      case 'network':
-        cmdNetwork();
-        break;
-      case 'price':
-        cliPrint('BTC/USDT: $'+lastPrice.toLocaleString(),'cli-ok');
-        break;
-      case 'clear':
-        cliOutput.innerHTML='';cliPrint('Cleared','cli-dim');
-        break;
-      default:
-        cliPrint('Unknown command: '+cmd+' — type <span class="cli-cmd">help</span>','cli-err');
-    }
-  }catch(e){
-    cliPrint('Error: '+(e.reason||e.message||e),'cli-err');
+async function parseNL(raw){
+  const s=raw.toLowerCase();
+  const addrIn=extractAddr(raw);
+  const amtIn=extractAmount(raw);
+
+  // ── Help ──
+  if(/^(help|帮助|怎么用|功能|命令|what|usage|menu|？\s*$|\?\s*$)/.test(s)||raw.trim()==='?'){
+    cliPrint('Try typing naturally! Examples:','cli-dim');
+    cliPrint('  "查余额" / "我的钱包有多少钱"','cli-dim');
+    cliPrint('  "存 5 USDC" / "充值 10"','cli-dim');
+    cliPrint('  "提现 3" / "取回 2 个币"','cli-dim');
+    cliPrint('  "转账 0x... 5 USDC"','cli-dim');
+    cliPrint('  "手续费多少" / "gas"','cli-dim');
+    cliPrint('  "最新区块" / "BTC价格"','cli-dim');
+    cliPrint('  "网络信息" / "查看交易 0x..."','cli-dim');
+    cliPrint('  "清屏"','cli-dim');
+    cliPrint('');
+    cliPrint('Or use exact commands: help balance agent gas block tx transfer network price clear','cli-dim');
+    return;
   }
+
+  // ── Clear ──
+  if(/^(clear|清屏|清理|cls)/.test(s)){cliOutput.innerHTML='';cliPrint('Cleared','cli-dim');return;}
+
+  // ── Network ──
+  if(/^(network|网络|链|chain|info$)/.test(s)||/网络信息|链信息/.test(s)){cmdNetwork();return;}
+
+  // ── Price ──
+  if(/^(price|价格|btc|比特币|汇率)/.test(s)||/btc.*(价格|多少|price)/.test(s)||/比特币.*(价格|多少)/.test(s)){cliPrint('BTC/USDT: $'+lastPrice.toLocaleString(),'cli-ok');return;}
+
+  // ── Gas ──
+  if(/^(gas|手续费|gas费|燃料|矿工费)/.test(s)||/gas.*(price|价格|多少|费用|fee)/.test(s)||/手续费.*多少/.test(s)||/多少.*手续费/.test(s)){await cmdGas();return;}
+
+  // ── Block ──
+  if(/^(block|区块)/.test(s)||/最新.*(区块|块)|区块.*最新/.test(s)){
+    const bn=s.match(/区块?\s*(\d+)/);await cmdBlock(bn?bn[1]:null);return;
+  }
+
+  // ── TX ──
+  if(/^(tx|交易)/.test(s)||/查看.*交易|交易.*状态/.test(s)){
+    const h=addrIn||(s.match(/0x[a-fA-F0-9]{64}/)||[])[0];
+    if(h) await cmdTx(h);else cliPrint('Please include a transaction hash (0x...)','cli-err');return;
+  }
+
+  // ── Balance ──
+  if(/^(余额|balance|查询|查看).*/.test(s)||/.*(余额|有钱|多少钱|balance|how much).*/.test(s)||/我的.*(钱包|账户|余额)/.test(s)||/钱包.*(余额|多少|钱)/.test(s)){
+    if(/agent|代理/.test(s)){await cmdAgent(['balance']);return;}
+    await cmdBalance(addrIn||null);return;
+  }
+
+  // ── Agent Deposit ──
+  if(/^(存|充值|deposit|入金|存入|转入).*/.test(s)||/.*(存到|充到|转入|deposit).*(agent|代理|钱包)/.test(s)||/.*(deposit|charge|top.?up).*/.test(s)){
+    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
+    if(!a){cliPrint('How much? e.g. "存 5 USDC"','cli-err');return;}
+    document.getElementById('fund-amount').value=a;
+    await depositARC();return;
+  }
+
+  // ── Agent Withdraw ──
+  if(/^(取|提现|提取|取出|withdraw|提出).*/.test(s)||/.*(取回|取出|提出|withdraw).*/.test(s)){
+    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
+    if(!a){cliPrint('How much? e.g. "提现 3 USDC"','cli-err');return;}
+    document.getElementById('fund-amount').value=a;
+    showWithdrawModal();return;
+  }
+
+  // ── Agent Balance ──
+  if(/agent.*(余额|balance)|代理.*(余额|钱|balance)/.test(s)||/agent.*钱包/.test(s)){await cmdAgent(['balance']);return;}
+
+  // ── Transfer ──
+  if(/^(transfer|转账|发送|send|转出).*/.test(s)||/.*(转给|转到|发送到|send to).*/.test(s)){
+    const to=addrIn;
+    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
+    if(!to){cliPrint('Specify recipient address: "转账 0x... 5"','cli-err');return;}
+    if(!a){cliPrint('Specify amount: "转账 0x... 5"','cli-err');return;}
+    await cmdTransfer(to,String(a));return;
+  }
+
+  // ── Greeting / Casual ──
+  if(/^(hi|hello|hey|你好|嗨|哈喽)/.test(s)){cliPrint('Hello! Connect your wallet and try "查余额" or "帮助" to get started.','cli-dim');return;}
+
+  // ── Fallback ──
+  cliPrint('Hmm, not sure what you mean. Try typing <span class="cli-cmd">帮助</span> or <span class="cli-cmd">help</span>','cli-err');
 }
 
 async function cmdBalance(target){
@@ -718,7 +759,7 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Arc CLI Terminal ready. Connect wallet and type help to start.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Type naturally in the terminal below. Try "查余额" or "存5个USDC"';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
 updateAgentBal();
 loadStrategy();
