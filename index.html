@@ -74,6 +74,13 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 .tx-link{font-family:monospace;font-size:11px;word-break:break-all;color:var(--neon)}
 
+.param-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.param-row:last-of-type{border-bottom:none}
+.param-label{font-size:13px;color:var(--muted);min-width:80px}
+.param-inline{font-size:13px;color:var(--text);white-space:nowrap}
+.param-num{width:58px;background:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--neon);font-family:monospace;font-size:13px;text-align:center;outline:none;transition:border .2s}
+.param-num:focus{border-color:var(--blue)}
+
 @media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
 </style>
 </head>
@@ -138,14 +145,48 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   </div>
 
   <h2 style="margin-top:32px">Strategy</h2>
-  <div class="panel">
-    <div class="stat-row"><span class="stat-label full">Combo 1</span><span class="stat-value">Time&lt;2min, Price 0.8–0.97, BTC&gt;$30</span></div>
-    <div class="stat-row"><span class="stat-label full">Combo 2</span><span class="stat-value">Time&lt;3min, Price 0.8–0.97, BTC&gt;$55</span></div>
-    <div class="stat-row"><span class="stat-label full">Combo 3</span><span class="stat-value">Time&lt;1min, Price 0.7–0.97, BTC&gt;$15</span></div>
-    <div class="stat-row"><span class="stat-label full">Hedge</span><span class="stat-value">Auto @ 0.95, Safety Score &lt; 50</span></div>
-    <div class="stat-row"><span class="stat-label full">Stop Loss</span><span class="stat-value">-20% after 5min hold</span></div>
-    <div class="stat-row"><span class="stat-label full">Take Profit</span><span class="stat-value">+10%</span></div>
-    <div class="stat-row"><span class="stat-label full">Data Sources</span><span class="stat-value">Binance WS + Chainlink Oracle</span></div>
+  <div class="panel" id="strategy-panel">
+    <div class="param-row">
+      <span class="param-label">Combo 1</span>
+      <span class="param-inline">Time &lt; <input type="number" id="c1_time" value="2" min="0" step="0.5" class="param-num"> min</span>
+      <span class="param-inline">Price <input type="number" id="c1_pmin" value="0.80" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c1_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
+      <span class="param-inline">BTC &gt; $<input type="number" id="c1_btc" value="30" min="0" step="5" class="param-num"></span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Combo 2</span>
+      <span class="param-inline">Time &lt; <input type="number" id="c2_time" value="3" min="0" step="0.5" class="param-num"> min</span>
+      <span class="param-inline">Price <input type="number" id="c2_pmin" value="0.80" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c2_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
+      <span class="param-inline">BTC &gt; $<input type="number" id="c2_btc" value="55" min="0" step="5" class="param-num"></span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Combo 3</span>
+      <span class="param-inline">Time &lt; <input type="number" id="c3_time" value="1" min="0" step="0.5" class="param-num"> min</span>
+      <span class="param-inline">Price <input type="number" id="c3_pmin" value="0.70" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c3_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
+      <span class="param-inline">BTC &gt; $<input type="number" id="c3_btc" value="15" min="0" step="5" class="param-num"></span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Hedge</span>
+      <span class="param-inline">Auto @ <input type="number" id="hedge_price" value="0.95" min="0" max="1" step="0.01" class="param-num"></span>
+      <span class="param-inline">Safety &lt; <input type="number" id="hedge_safety" value="50" min="0" max="100" step="5" class="param-num"></span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Stop Loss</span>
+      <span class="param-inline"><input type="number" id="sl_pct" value="-20" max="0" step="1" class="param-num">%</span>
+      <span class="param-inline">after <input type="number" id="sl_hold" value="5" min="0" step="1" class="param-num"> min hold</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Take Profit</span>
+      <span class="param-inline">+<input type="number" id="tp_pct" value="10" min="0" step="1" class="param-num">%</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Data Sources</span>
+      <span class="param-inline">Binance WS + Chainlink Oracle</span>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-deposit" onclick="saveStrategy()">Save</button>
+      <button class="btn" onclick="resetStrategy()">Reset Defaults</button>
+      <span class="fund-status" id="strategy-status" style="margin-left:8px"></span>
+    </div>
   </div>
 
   <h2 style="margin-top:32px">Arc Mint Proofs</h2>
@@ -426,6 +467,47 @@ async function confirmWithdraw(){
 }
 
 let lastPrice=0;
+
+const DEFAULT_STRATEGY={
+  c1_time:2,c1_pmin:0.80,c1_pmax:0.97,c1_btc:30,
+  c2_time:3,c2_pmin:0.80,c2_pmax:0.97,c2_btc:55,
+  c3_time:1,c3_pmin:0.70,c3_pmax:0.97,c3_btc:15,
+  hedge_price:0.95,hedge_safety:50,
+  sl_pct:-20,sl_hold:5,
+  tp_pct:10
+};
+const STRATEGY_KEY='agora_strategy';
+
+function loadStrategy(){
+  const saved=localStorage.getItem(STRATEGY_KEY);
+  const cfg=saved?JSON.parse(saved):DEFAULT_STRATEGY;
+  for(const[k,v]of Object.entries(cfg)){
+    const el=document.getElementById(k);
+    if(el) el.value=v;
+  }
+}
+function saveStrategy(){
+  const cfg={};
+  for(const k of Object.keys(DEFAULT_STRATEGY)){
+    const el=document.getElementById(k);
+    if(el) cfg[k]=el.value;
+  }
+  localStorage.setItem(STRATEGY_KEY,JSON.stringify(cfg));
+  const st=document.getElementById('strategy-status');
+  st.textContent='Saved';st.style.color='var(--neon)';
+  setTimeout(()=>st.textContent='',2000);
+}
+function resetStrategy(){
+  localStorage.removeItem(STRATEGY_KEY);
+  for(const[k,v]of Object.entries(DEFAULT_STRATEGY)){
+    const el=document.getElementById(k);
+    if(el) el.value=v;
+  }
+  const st=document.getElementById('strategy-status');
+  st.textContent='Reset to defaults';st.style.color='var(--blue)';
+  setTimeout(()=>st.textContent='',2000);
+}
+
 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()}).catch(()=>document.getElementById('btc').textContent='—');
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
@@ -434,6 +516,7 @@ setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSD
 (function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — Monitor Polymarket BTC 5min prediction market, 3-tier strategy auto-execute';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
 updateAgentBal();
+loadStrategy();
 </script>
 </body>
 </html>
