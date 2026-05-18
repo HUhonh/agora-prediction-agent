@@ -126,7 +126,7 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   <h2 style="margin-top:32px">Agent Status</h2>
   <div class="grid">
     <div class="panel">
-      <div class="stat-row"><span class="stat-label">Agent ID</span><span class="stat-value">ERC-8004 #7824</span></div>
+      <div class="stat-row"><span class="stat-label">Agent ID</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="agent-id">—</span></div>
       <div class="stat-row"><span class="stat-label">Chain</span><span class="stat-value">Arc Testnet (5042002)</span></div>
       <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value"><span class="badge badge-on"><span class="dot"></span>Running</span></span></div>
     </div>
@@ -323,9 +323,11 @@ async function connectWallet(){
     document.getElementById('disconnect-btn').style.display='inline-flex';
     if(hasAgentWallet()){
       document.getElementById('agent-addr').textContent=shorten(getAgentAddress());
+      document.getElementById('agent-id').textContent='ERC-8004 '+shorten(getAgentAddress());
       document.getElementById('setup-section').style.display='none';
     }else{
       document.getElementById('agent-addr').textContent='Not created';
+      document.getElementById('agent-id').textContent='—';
       document.getElementById('setup-section').style.display='block';
     }
     await updateAgentBal();
@@ -339,6 +341,7 @@ function disconnectWallet(){
   document.getElementById('disconnect-btn').style.display='none';
   document.getElementById('agent-addr').textContent='—';
   document.getElementById('agent-bal').textContent='—';
+  document.getElementById('agent-id').textContent='—';
   document.getElementById('setup-section').style.display='none';
 }
 
@@ -350,6 +353,7 @@ async function updateAgentBal(){
     const bal=await p.getBalance(addr);
     document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
     document.getElementById('agent-addr').textContent=shorten(addr);
+    document.getElementById('agent-id').textContent='ERC-8004 '+shorten(addr);
   }catch(e){document.getElementById('agent-bal').textContent='—'}
 }
 
@@ -365,6 +369,7 @@ async function createAgentPassword(){
     agentWallet=w;
     document.getElementById('setup-section').style.display='none';
     document.getElementById('agent-addr').textContent=shorten(w.address);
+    document.getElementById('agent-id').textContent='ERC-8004 '+shorten(w.address);
     st.textContent='Agent wallet created! Save your password - it cannot be recovered.';st.style.color='var(--neon)';
     setTimeout(async()=>{st.textContent='';await updateAgentBal();},4000);
   }catch(e){st.textContent=e.message||'Creation failed';st.style.color='var(--red)'}
