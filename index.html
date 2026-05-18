@@ -150,13 +150,25 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
   </div>
 
   <div class="panel" id="setup-section" style="display:none;margin-top:16px;border-color:var(--blue)">
-    <div class="stat-row"><span class="stat-label full" style="color:var(--blue)">First-time Setup — Create Agent Password</span></div>
+    <div class="stat-row"><span class="stat-label full" style="color:var(--blue)">Create Agent Wallet</span></div>
     <div class="input-fund">
       <input type="password" id="setup-password" placeholder="Password (min 8 chars)" style="font-family:inherit">
       <input type="password" id="setup-password2" placeholder="Confirm password" style="font-family:inherit">
     </div>
+    <div class="input-fund">
+      <input type="text" id="setup-metadata" placeholder="Metadata URI (default: ipfs://...)" style="font-family:monospace" value="ipfs://agora-agent-metadata">
+    </div>
     <button class="btn btn-deposit" onclick="createAgentPassword()" style="width:100%">Create Agent Wallet</button>
     <div class="fund-status" id="setup-status"></div>
+  </div>
+
+  <div class="panel" id="register-section" style="display:none;margin-top:16px;border-color:var(--neon)">
+    <div class="stat-row"><span class="stat-label full" style="color:var(--neon)">Register Agent on Arc</span></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">
+      Your agent wallet needs USDC for gas. Deposit first, then register.
+    </div>
+    <button class="btn btn-deposit" id="register-btn" onclick="registerAgent()" style="width:100%">Register on ERC-8004</button>
+    <div class="fund-status" id="register-status"></div>
   </div>
 
   <h2 style="margin-top:32px">Strategy</h2>
@@ -262,10 +274,17 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 <script>
 const ARC_RPC='https://rpc.testnet.arc.network';
 const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[ARC_RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
+const IDENTITY_REGISTRY='0x8004A818BFB912233c491871b3d84c89A494BD9e';
+const ABI_REGISTER=[
+  {"inputs":[{"name":"metadataUri","type":"string"}],"name":"register","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"name":"owner","type":"address"}],"name":"getAgentId","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
+];
+const DEFAULT_METADATA='ipfs://agora-agent-metadata';
 const AGENT_KEY_STORAGE='agora_agent_encrypted';
 const AGENT_SALT_STORAGE='agora_agent_salt';
 const AGENT_IV_STORAGE='agora_agent_iv';
 const AGENT_ADDR_STORAGE='agora_agent_addr';
+const AGENT_ID_STORAGE='agora_agent_id';
 
 let provider=null,signer=null,address=null,agentWallet=null;
 
@@ -308,6 +327,68 @@ async function setupAgentWallet(password){
 
 function shorten(a){return a.slice(0,6)+'...'+a.slice(-4);}
 
+function getAgentId(){return localStorage.getItem(AGENT_ID_STORAGE);}
+
+async function checkAgentRegistered(){
+  const addr=getAgentAddress();
+  if(!addr) return {registered:false};
+  try{
+    const p=new ethers.JsonRpcProvider(ARC_RPC);
+    const c=new ethers.Contract(IDENTITY_REGISTRY,ABI_REGISTER,p);
+    const id=await c.getAgentId(addr);
+    if(id&&id>0n){
+      localStorage.setItem(AGENT_ID_STORAGE,String(id));
+      return {registered:true,agentId:String(id)};
+    }
+  }catch(e){/* not registered */}
+  return {registered:false};
+}
+
+async function registerAgent(){
+  const btn=document.getElementById('register-btn');
+  const st=document.getElementById('register-status');
+  const addr=getAgentAddress();
+  if(!addr){st.textContent='Create agent wallet first';st.style.color='var(--red)';return}
+
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Registering...';
+
+  try{
+    const pw=prompt('Enter your agent wallet password to sign the registration:');
+    if(!pw){btn.disabled=false;btn.innerHTML='Register on ERC-8004';return}
+
+    const pk=await decryptPrivateKey(pw);
+    const aw=new ethers.Wallet(pk,new ethers.JsonRpcProvider(ARC_RPC));
+    const bal=await aw.provider.getBalance(addr);
+
+    if(bal<ethers.parseEther('0.001')){
+      st.textContent='Agent wallet needs USDC for gas. Deposit first.';st.style.color='var(--red)';
+      btn.disabled=false;btn.innerHTML='Register on ERC-8004';return;
+    }
+
+    const metadataUri=document.getElementById('setup-metadata').value||DEFAULT_METADATA;
+    const contract=new ethers.Contract(IDENTITY_REGISTRY,ABI_REGISTER,aw);
+    const tx=await contract.register(metadataUri);
+    st.innerHTML='Registering: <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+tx.hash.slice(0,10)+'...</a>';
+    await tx.wait();
+
+    const p=new ethers.JsonRpcProvider(ARC_RPC);
+    const c=new ethers.Contract(IDENTITY_REGISTRY,ABI_REGISTER,p);
+    const agentId=await c.getAgentId(addr);
+    localStorage.setItem(AGENT_ID_STORAGE,String(agentId));
+    document.getElementById('agent-id').textContent='ERC-8004 #'+agentId;
+    document.getElementById('register-section').style.display='none';
+
+    st.innerHTML='<span style="color:var(--neon)">Agent #'+agentId+' registered!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View</a>';
+  }catch(e){
+    if(e instanceof DOMException&&e.name==='OperationError'){
+      st.textContent='Invalid password';st.style.color='var(--red)';
+    }else{
+      st.textContent=e.reason||e.message||'Registration failed';st.style.color='var(--red)';
+    }
+    btn.disabled=false;btn.innerHTML='Register on ERC-8004';
+  }
+}
+
 async function connectWallet(){
   if(!window.ethereum){alert('Install MetaMask');return}
   try{
@@ -322,13 +403,22 @@ async function connectWallet(){
     document.getElementById('connect-btn').style.display='none';
     document.getElementById('disconnect-btn').style.display='inline-flex';
     if(hasAgentWallet()){
-      document.getElementById('agent-addr').textContent=shorten(getAgentAddress());
-      document.getElementById('agent-id').textContent='ERC-8004 '+shorten(getAgentAddress());
+      const addr=getAgentAddress();
+      document.getElementById('agent-addr').textContent=shorten(addr);
+      const {registered,agentId}=await checkAgentRegistered();
+      if(registered){
+        document.getElementById('agent-id').textContent='ERC-8004 #'+agentId;
+        document.getElementById('register-section').style.display='none';
+      }else{
+        document.getElementById('agent-id').textContent='ERC-8004 '+shorten(addr);
+        document.getElementById('register-section').style.display='block';
+      }
       document.getElementById('setup-section').style.display='none';
     }else{
       document.getElementById('agent-addr').textContent='Not created';
       document.getElementById('agent-id').textContent='—';
       document.getElementById('setup-section').style.display='block';
+      document.getElementById('register-section').style.display='none';
     }
     await updateAgentBal();
   }catch(e){console.error(e)}
@@ -343,6 +433,7 @@ function disconnectWallet(){
   document.getElementById('agent-bal').textContent='—';
   document.getElementById('agent-id').textContent='—';
   document.getElementById('setup-section').style.display='none';
+  document.getElementById('register-section').style.display='none';
 }
 
 async function updateAgentBal(){
@@ -353,7 +444,8 @@ async function updateAgentBal(){
     const bal=await p.getBalance(addr);
     document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
     document.getElementById('agent-addr').textContent=shorten(addr);
-    document.getElementById('agent-id').textContent='ERC-8004 '+shorten(addr);
+    const storedId=getAgentId();
+    document.getElementById('agent-id').textContent=storedId?'ERC-8004 #'+storedId:'ERC-8004 '+shorten(addr);
   }catch(e){document.getElementById('agent-bal').textContent='—'}
 }
 
@@ -370,8 +462,9 @@ async function createAgentPassword(){
     document.getElementById('setup-section').style.display='none';
     document.getElementById('agent-addr').textContent=shorten(w.address);
     document.getElementById('agent-id').textContent='ERC-8004 '+shorten(w.address);
-    st.textContent='Agent wallet created! Save your password - it cannot be recovered.';st.style.color='var(--neon)';
-    setTimeout(async()=>{st.textContent='';await updateAgentBal();},4000);
+    document.getElementById('register-section').style.display='block';
+    st.textContent='Agent wallet created! Deposit USDC then click Register.';st.style.color='var(--neon)';
+    setTimeout(async()=>{st.textContent='';await updateAgentBal();},5000);
   }catch(e){st.textContent=e.message||'Creation failed';st.style.color='var(--red)'}
 }
 
