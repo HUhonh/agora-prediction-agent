@@ -123,10 +123,9 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     <div class="fund-status" id="copy-status"></div>
   </div>
 
-  <h2 style="margin-top:32px">Agent Status</h2>
+  <h2 style="margin-top:32px">Market Status</h2>
   <div class="grid">
     <div class="panel">
-      <div class="stat-row"><span class="stat-label">Agent ID</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="agent-id">—</span></div>
       <div class="stat-row"><span class="stat-label">Chain</span><span class="stat-value">Arc Testnet (5042002)</span></div>
       <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value"><span class="badge badge-on"><span class="dot"></span>Running</span></span></div>
     </div>
@@ -137,26 +136,16 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     </div>
   </div>
 
-  <h2 style="margin-top:32px">Agent Funding</h2>
+  <h2 style="margin-top:32px">Deposit / Withdraw</h2>
   <div class="panel" id="funding-panel">
-    <div class="stat-row"><span class="stat-label full">Your Agent Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="agent-addr">—</span></div>
-    <div class="stat-row"><span class="stat-label full">Agent Balance</span><span class="stat-value" style="color:var(--neon);font-weight:700" id="agent-bal">—</span></div>
+    <div class="stat-row"><span class="stat-label full">Deposit Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="deposit-addr">—</span></div>
+    <div class="stat-row"><span class="stat-label full">Deposit Balance</span><span class="stat-value" style="color:var(--neon);font-weight:700" id="deposit-bal">—</span></div>
     <div class="input-fund" id="fund-inputs">
       <input type="number" id="fund-amount" placeholder="Amount (USDC)" step="0.01" min="0">
       <button class="btn btn-deposit" id="deposit-btn" onclick="depositARC()">Deposit</button>
       <button class="btn btn-withdraw" id="withdraw-btn" onclick="showWithdrawModal()">Withdraw</button>
     </div>
     <div class="fund-status" id="fund-status"></div>
-  </div>
-
-  <div class="panel" id="setup-section" style="display:none;margin-top:16px;border-color:var(--blue)">
-    <div class="stat-row"><span class="stat-label full" style="color:var(--blue)">Create Agent Wallet</span></div>
-    <div class="input-fund">
-      <input type="password" id="setup-password" placeholder="Password (min 8 chars)" style="font-family:inherit">
-      <input type="password" id="setup-password2" placeholder="Confirm password" style="font-family:inherit">
-    </div>
-    <button class="btn btn-deposit" onclick="createAgentPassword()" style="width:100%">Create Agent Wallet</button>
-    <div class="fund-status" id="setup-status"></div>
   </div>
 
   <h2 style="margin-top:32px">Strategy</h2>
@@ -229,9 +218,9 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 <div class="modal-overlay" id="withdraw-modal">
   <div class="modal">
     <h3>Confirm Withdrawal</h3>
-    <p class="modal-sub">Send USDC from your agent wallet back to your connected wallet</p>
+    <p class="modal-sub">Send USDC from your deposit wallet back to your connected wallet</p>
     <div class="form-group">
-      <label>From (Agent Wallet)</label>
+      <label>From (Deposit Wallet)</label>
       <input type="text" id="modal-from" readonly>
     </div>
     <div class="form-group">
@@ -246,10 +235,6 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
       <label>Estimated Gas</label>
       <input type="text" id="modal-gas" readonly value="~0.0001 USDC">
     </div>
-    <div class="form-group">
-      <label>Agent Password</label>
-      <input type="password" id="modal-password" placeholder="Enter your agent wallet password">
-    </div>
     <div class="modal-actions">
       <button class="btn btn-cancel" onclick="closeWithdrawModal()">Cancel</button>
       <button class="btn btn-confirm" id="confirm-withdraw-btn" onclick="confirmWithdraw()">Confirm Withdraw</button>
@@ -262,30 +247,146 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 <script>
 const ARC_RPC='https://rpc.testnet.arc.network';
 const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[ARC_RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
-const AGENT_KEY_STORAGE='agora_agent_encrypted';
-const AGENT_SALT_STORAGE='agora_agent_salt';
-const AGENT_IV_STORAGE='agora_agent_iv';
-const AGENT_ADDR_STORAGE='agora_agent_addr';
+const DEPOSIT_KEY_PREFIX='deposit_pk_';
+const DEPOSIT_ADDR_PREFIX='deposit_addr_';
 
-function agentKey(base){return base+'_'+address;}
+let provider=null,signer=null,address=null;
 
-let provider=null,signer=null,address=null,agentWallet=null;
+function depKey(){return DEPOSIT_KEY_PREFIX+address;}
+function depAddrKey(){return DEPOSIT_ADDR_PREFIX+address;}
+function getDepositPK(){return localStorage.getItem(depKey());}
+function getDepositAddr(){return localStorage.getItem(depAddrKey());}
 
-function buf2hex(b){return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
-function hex2buf(h){return new Uint8Array(h.match(/.{1,2}/g).map(b=>parseInt(b,16))).buffer;}
+function shorten(a){return a.slice(0,6)+'...'+a.slice(-4);}
 
-function hasAgentWallet(){return !!localStorage.getItem(agentKey(AGENT_KEY_STORAGE));}
-function getAgentAddress(){return localStorage.getItem(agentKey(AGENT_ADDR_STORAGE));}
+async function connectWallet(){
+  if(!window.ethereum){alert('Install MetaMask');return}
+  try{
+    provider=new ethers.BrowserProvider(window.ethereum);
+    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:ARC_CHAIN.chainId}]}).catch(()=>
+      window.ethereum.request({method:'wallet_addEthereumChain',params:[ARC_CHAIN]})
+    );
+    signer=await provider.getSigner();address=await signer.getAddress();
+    document.getElementById('wallet-addr').textContent=shorten(address);
+    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+    document.getElementById('wallet-info').style.display='block';
+    document.getElementById('connect-btn').style.display='none';
+    document.getElementById('disconnect-btn').style.display='inline-flex';
+    if(!getDepositPK()){
+      const w=ethers.Wallet.createRandom();
+      localStorage.setItem(depKey(),w.privateKey);
+      localStorage.setItem(depAddrKey(),w.address);
+    }
+    document.getElementById('deposit-addr').textContent=shorten(getDepositAddr());
+    await updateDepositBal();
+  }catch(e){console.error(e)}
+}
 
-async function decryptPrivateKey(password){
-  const enc=new TextEncoder();
-  const salt=hex2buf(localStorage.getItem(agentKey(AGENT_SALT_STORAGE)));
-  const iv=hex2buf(localStorage.getItem(agentKey(AGENT_IV_STORAGE)));
-  const encrypted=hex2buf(localStorage.getItem(agentKey(AGENT_KEY_STORAGE)));
-  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
-  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['decrypt']);
-  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,encrypted);
-  return new TextDecoder().decode(decrypted);
+function disconnectWallet(){
+  provider=null;signer=null;address=null;
+  document.getElementById('wallet-info').style.display='none';
+  document.getElementById('connect-btn').style.display='inline-flex';
+  document.getElementById('disconnect-btn').style.display='none';
+  document.getElementById('deposit-addr').textContent='—';
+  document.getElementById('deposit-bal').textContent='—';
+}
+
+async function updateDepositBal(){
+  const addr=getDepositAddr();
+  if(!addr){document.getElementById('deposit-bal').textContent='—';return}
+  try{
+    const p=new ethers.JsonRpcProvider(ARC_RPC);
+    const bal=await p.getBalance(addr);
+    document.getElementById('deposit-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
+    document.getElementById('deposit-addr').textContent=shorten(addr);
+  }catch(e){document.getElementById('deposit-bal').textContent='—'}
+}
+
+async function depositARC(){
+  const amt=document.getElementById('fund-amount').value;
+  const st=document.getElementById('fund-status');
+  if(!amt||amt<=0){st.textContent='Enter valid amount';st.style.color='var(--red)';return}
+  if(!signer){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
+  const toAddr=getDepositAddr();
+  if(!toAddr){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
+  try{
+    st.innerHTML='<span class="spinner"></span> Sending...';st.style.color='var(--blue)';
+    const tx=await signer.sendTransaction({to:toAddr,value:ethers.parseEther(amt)});
+    st.innerHTML='Confirming: <span class="tx-link">'+tx.hash.slice(0,10)+'...</span>';
+    await tx.wait();
+    st.innerHTML='<span style="color:var(--neon)">Deposit successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View</a>';
+    st.style.color='var(--neon)';
+    document.getElementById('fund-amount').value='';
+    await updateDepositBal();
+    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+  }catch(e){st.textContent=e.reason||e.message||'Cancelled';st.style.color='var(--red)'}
+}
+
+function showWithdrawModal(){
+  if(!signer){alert('Connect wallet first');return}
+  const amt=document.getElementById('fund-amount').value;
+  if(!amt||amt<=0){document.getElementById('fund-status').textContent='Enter amount to withdraw';document.getElementById('fund-status').style.color='var(--red)';return}
+  document.getElementById('modal-from').value=getDepositAddr();
+  document.getElementById('modal-to').value=address;
+  document.getElementById('modal-amount').value=amt+' USDC';
+  document.getElementById('modal-status').textContent='';
+  document.getElementById('confirm-withdraw-btn').disabled=false;
+  document.getElementById('confirm-withdraw-btn').classList.remove('danger');
+  document.getElementById('withdraw-modal').classList.add('active');
+}
+
+function closeWithdrawModal(){
+  document.getElementById('withdraw-modal').classList.remove('active');
+}
+
+async function confirmWithdraw(){
+  const btn=document.getElementById('confirm-withdraw-btn');
+  const ms=document.getElementById('modal-status');
+  const amtStr=document.getElementById('fund-amount').value;
+  if(!amtStr||parseFloat(amtStr)<=0){ms.textContent='Invalid amount';ms.style.color='var(--red)';return}
+  if(!address){ms.textContent='Wallet not connected';ms.style.color='var(--red)';return}
+
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span> Signing...';
+  btn.classList.add('danger');
+  ms.textContent='';
+
+  try{
+    const pk=getDepositPK();
+    const dw=new ethers.Wallet(pk,new ethers.JsonRpcProvider(ARC_RPC));
+    const bal=await dw.provider.getBalance(dw.address);
+    const amtWei=ethers.parseEther(amtStr);
+
+    if(bal<amtWei){ms.textContent='Insufficient balance';ms.style.color='var(--red)';btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');return}
+
+    const feeData=await dw.provider.getFeeData();
+    const tx=await dw.sendTransaction({
+      to:address,value:amtWei,gasLimit:21000n,
+      maxFeePerGas:feeData.maxFeePerGas||50000000000n,
+      maxPriorityFeePerGas:feeData.maxPriorityFeePerGas||2000000000n
+    });
+
+    ms.innerHTML='<span style="color:var(--blue)">Submitted: </span><a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+shorten(tx.hash)+'</a>';
+    ms.style.color='var(--text)';
+    await tx.wait();
+    ms.innerHTML='<span style="color:var(--neon)">Withdrawal successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View on ArcScan</a>';
+    ms.style.color='var(--neon)';
+
+    document.getElementById('fund-status').innerHTML='<span style="color:var(--neon)">Withdrew '+amtStr+' USDC</span>';
+    document.getElementById('fund-status').style.color='var(--neon)';
+    document.getElementById('fund-amount').value='';
+
+    setTimeout(async()=>{
+      await updateDepositBal();
+      if(provider&&address) document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+      closeWithdrawModal();
+      btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');
+    },3000);
+  }catch(e){
+    ms.textContent=e.reason||e.message||'Withdrawal failed';
+    ms.style.color='var(--red)';
+    btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');
+  }
 }
 
 async function setupAgentWallet(password){
@@ -541,7 +642,7 @@ function copyInstallCmd(){
   });
 }
 
-updateAgentBal();
+updateDepositBal();
 loadStrategy();
 </script>
 </body>
