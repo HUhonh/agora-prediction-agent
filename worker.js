@@ -23,7 +23,7 @@ export default {
     }
 
     try {
-      const { message } = await request.json();
+      const { message, context } = await request.json();
       if (!message) {
         return new Response(JSON.stringify({ error: 'message required' }), {
           status: 400,
@@ -31,26 +31,38 @@ export default {
         });
       }
 
-      const systemPrompt = `You are a blockchain CLI assistant for the Arc Testnet (chain 5042002, native currency USDC).
-Parse the user's natural language input and return a JSON object with:
-- "action": one of [balance, agent_balance, agent_deposit, agent_withdraw, transfer, gas, block, tx, price, network, help, clear, unknown]
-- "params": object with relevant parameters (address, amount, hash, blockNumber, etc.)
-- "reply": a short friendly response in the user's language
+      const ctxStr = context ? `
+Current market context:
+- BTC price: $${context.btcPrice || 'N/A'}
+- 5-min market: ${context.marketSlug || 'N/A'}
+- Time remaining in round: ${context.timeRemaining || 'N/A'}
+- Current strategy: ${context.strategy || 'N/A'}
+` : '';
 
-Example inputs and outputs:
-"查余额" -> {"action":"balance","params":{},"reply":"查询你的钱包余额"}
-"查一下 0x1234567890123456789012345678901234567890 的余额" -> {"action":"balance","params":{"address":"0x1234567890123456789012345678901234567890"},"reply":"查询该地址余额"}
-"存 5 USDC" -> {"action":"agent_deposit","params":{"amount":5},"reply":"存入 5 USDC 到 Agent 钱包"}
-"提现 3 个" -> {"action":"agent_withdraw","params":{"amount":3},"reply":"从 Agent 钱包提现 3 USDC"}
-"agent 钱包多少钱" -> {"action":"agent_balance","params":{},"reply":"查询 Agent 钱包余额"}
-"转账 10 USDC 给 0xabcd..." -> {"action":"transfer","params":{"to":"0xabcd...","amount":10},"reply":"转账 10 USDC"}
-"手续费" -> {"action":"gas","params":{},"reply":"查询当前 gas 价格"}
-"最新区块" -> {"action":"block","params":{},"reply":"查询最新区块"}
-"BTC 价格" -> {"action":"price","params":{},"reply":"查询 BTC 价格"}
-"怎么用" -> {"action":"help","params":{},"reply":"显示帮助"}
-"你好" -> {"action":"unknown","params":{},"reply":"你好！需要什么帮助？"}
+      const systemPrompt = `You are a professional crypto prediction market analyst specializing in BTC 5-minute binary markets on Polymarket. You help traders make informed decisions.
 
-Only return valid JSON. No markdown, no code blocks, no explanation.`;
+Your personality: sharp, data-driven, concise. You think in probabilities.
+
+When analyzing, consider:
+- Recent BTC price action and volatility
+- Remaining time in the 5-minute window (later = more certainty)
+- Market microstructure (bid-ask spread, volume)
+- Common patterns at specific times (e.g., US market open volatility)
+- Risk-reward ratios and Kelly criterion thinking
+
+Respond in the user's language. Return valid JSON only:
+{
+  "analysis": "Your detailed analysis (2-4 sentences)",
+  "direction": "up" | "down" | "neutral",
+  "probability": number between 0-1 (your confidence in the direction),
+  "confidence": "high" | "medium" | "low",
+  "recommendation": "buy_up" | "buy_down" | "wait" | "avoid",
+  "priceTarget": number (the max price you'd pay for this bet, 0-1),
+  "reasoning": "Bullet points of key factors",
+  "risks": "Key risk factors"
+}
+
+No markdown, no code blocks. Only the JSON object.`;
 
       const dsResp = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
@@ -62,10 +74,10 @@ Only return valid JSON. No markdown, no code blocks, no explanation.`;
           model: 'deepseek-chat',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: message },
+            { role: 'user', content: ctxStr + '\nUser question: ' + message },
           ],
-          temperature: 0.1,
-          max_tokens: 200,
+          temperature: 0.4,
+          max_tokens: 800,
         }),
       });
 
@@ -78,19 +90,16 @@ Only return valid JSON. No markdown, no code blocks, no explanation.`;
       }
 
       const data = await dsResp.json();
-      const content = data.choices[0].message.content;
+      const content = data.choices[0].message.content.trim();
 
-      // Strip markdown code blocks if any
-      let json = content.trim();
-      json = json.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+      let json = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
       let parsed;
       try {
         parsed = JSON.parse(json);
       } catch {
-        // Fallback: try to extract JSON from the response
         const match = json.match(/\{[\s\S]*\}/);
-        parsed = match ? JSON.parse(match[0]) : { action: 'unknown', params: {}, reply: content };
+        parsed = match ? JSON.parse(match[0]) : { analysis: content, direction: 'neutral', probability: 0.5, confidence: 'low', recommendation: 'wait' };
       }
 
       return new Response(JSON.stringify(parsed), {
