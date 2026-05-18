@@ -81,45 +81,6 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
 .param-num{width:58px;background:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--neon);font-family:monospace;font-size:13px;text-align:center;outline:none;transition:border .2s}
 .param-num:focus{border-color:var(--blue)}
 
-/* CLI Terminal */
-#cli-output{background:#050505;border-radius:6px;padding:14px 16px;min-height:160px;max-height:380px;overflow-y:auto;font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;font-size:13px;line-height:1.7;margin-bottom:10px}
-#cli-output::-webkit-scrollbar{width:4px}
-#cli-output::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.cli-line{margin:2px 0;word-break:break-all}
-.cli-dim{color:var(--muted)}
-.cli-out{color:var(--text)}
-.cli-ok{color:var(--neon)}
-.cli-err{color:var(--red)}
-.cli-cmd{color:var(--blue);cursor:pointer}
-.cli-cmd:hover{text-decoration:underline}
-.cli-hash{color:var(--blue)}
-.cli-val{color:var(--neon)}
-.cli-input-row{display:flex;align-items:center;gap:8px}
-.cli-prompt{color:var(--neon);font-family:monospace;font-weight:700;font-size:14px}
-#cli-input{flex:1;background:transparent;border:none;color:var(--text);font-family:'Cascadia Code','Fira Code',monospace;font-size:13px;padding:6px 0;outline:none}
-#cli-input::placeholder{color:var(--muted)}
-
-/* AI Chat */
-#ai-chat{background:#050505;border-radius:6px;padding:14px 16px;min-height:60px;max-height:360px;overflow-y:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:10px}
-#ai-chat::-webkit-scrollbar{width:4px}
-#ai-chat::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.chat-msg{display:flex;max-width:100%}
-.chat-msg.user{justify-content:flex-end}
-.chat-msg.bot{justify-content:flex-start}
-.chat-bubble{max-width:85%;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.6;word-break:break-word}
-.chat-msg.user .chat-bubble{background:var(--blue);color:#000;border-bottom-right-radius:2px}
-.chat-msg.bot .chat-bubble{background:#111;color:var(--text);border:1px solid var(--border);border-bottom-left-radius:2px}
-.chat-bubble .direction-up{color:var(--neon);font-weight:600}
-.chat-bubble .direction-down{color:var(--red);font-weight:600}
-.chat-bubble .direction-neutral{color:var(--muted)}
-.chat-bubble .prob-bar{display:inline-block;height:6px;border-radius:3px;margin:0 4px;vertical-align:middle}
-.quick-prompts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.btn-prompt{font-size:11px;padding:4px 10px;background:transparent;border-color:var(--border);color:var(--muted)}
-.btn-prompt:hover{color:var(--neon);border-color:var(--neon);background:transparent;box-shadow:none}
-.chat-input-row{display:flex;gap:8px}
-.chat-input-row input{flex:1;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:inherit;font-size:13px;outline:none;transition:border .2s}
-.chat-input-row input:focus{border-color:var(--blue)}
-
 @media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
 </style>
 </head>
@@ -147,36 +108,19 @@ main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
     <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--neon)" id="wallet-bal">—</span></div>
   </div>
 
-  <h2>AI Assistant</h2>
-  <div class="panel" id="ai-panel">
-    <div id="ai-chat">
-      <div class="chat-msg bot">
-        <div class="chat-bubble">Ask me about BTC price prediction, market analysis, or trading strategy.</div>
-      </div>
+  <h2>CLI Agent</h2>
+  <div class="panel">
+    <div class="stat-row"><span class="stat-label full">Install Arc CLI</span><span class="stat-value" style="font-family:monospace;font-size:12px">arc-chain-cli v0.1.0</span></div>
+    <div style="background:#050505;border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin:12px 0;font-family:monospace;font-size:13px;color:var(--neon);position:relative">
+      <span id="install-cmd">pip install git+https://github.com/HUhonh/agora-prediction-agent.git#subdirectory=arc-cli</span>
+      <button class="btn" style="position:absolute;top:8px;right:8px;font-size:11px;padding:3px 10px" id="copy-btn" onclick="copyInstallCmd()">Copy</button>
     </div>
-    <div class="quick-prompts" id="quick-prompts">
-      <button class="btn btn-prompt" onclick="askAI('BTC 接下来5分钟会涨还是跌？')">BTC 5min 预测</button>
-      <button class="btn btn-prompt" onclick="askAI('现在值得下单吗？分析当前市场')">当前市场分析</button>
-      <button class="btn btn-prompt" onclick="askAI('帮我优化一下策略参数')">优化策略参数</button>
-      <button class="btn btn-prompt" onclick="askAI('最近BTC有什么趋势？')">BTC 趋势</button>
+    <div style="font-size:13px;color:var(--muted);line-height:1.8">
+      Run <code style="color:var(--blue)">arc --help</code> after install. Commands:
+      <code style="color:var(--blue)">auth login</code> · <code style="color:var(--blue)">chain balance</code> · <code style="color:var(--blue)">trade transfer</code> ·
+      <code style="color:var(--blue)">agent list</code> · <code style="color:var(--blue)">portfolio overview</code> · <code style="color:var(--blue)">bridge deposit</code>
     </div>
-    <div class="chat-input-row">
-      <input type="text" id="ai-input" placeholder="Ask about BTC predictions, markets, strategy..." autocomplete="off">
-      <button class="btn btn-deposit" id="ai-send" onclick="sendAI()">Send</button>
-    </div>
-  </div>
-
-  <h2>Arc CLI Terminal</h2>
-  <div class="panel" id="cli-panel" onclick="document.getElementById('cli-input').focus()">
-    <div id="cli-output">
-      <div class="cli-line cli-dim">Arc CLI v0.2 — type "帮助" for commands. Connect wallet to start.</div>
-      <div class="cli-line cli-dim">Connected to Arc Testnet (chain 5042002)</div>
-      <div class="cli-line cli-dim">Connect wallet → type naturally → execute onchain</div>
-    </div>
-    <div class="cli-input-row">
-      <span class="cli-prompt">&gt;</span>
-      <input type="text" id="cli-input" placeholder="type command..." autofocus autocomplete="off" spellcheck="false">
-    </div>
+    <div class="fund-status" id="copy-status"></div>
   </div>
 
   <h2 style="margin-top:32px">Agent Status</h2>
@@ -385,7 +329,6 @@ async function connectWallet(){
       document.getElementById('setup-section').style.display='block';
     }
     await updateAgentBal();
-    cliPrint('Wallet connected: '+shorten(address),'cli-ok');
   }catch(e){console.error(e)}
 }
 
@@ -397,7 +340,6 @@ function disconnectWallet(){
   document.getElementById('agent-addr').textContent='—';
   document.getElementById('agent-bal').textContent='—';
   document.getElementById('setup-section').style.display='none';
-  cliPrint('Wallet disconnected','cli-dim');
 }
 
 async function updateAgentBal(){
@@ -541,219 +483,6 @@ async function confirmWithdraw(){
 
 let lastPrice=0;
 
-// ── CLI Terminal ──
-let cliHistory=[],cliIdx=-1,tempInput='';
-const cliInput=document.getElementById('cli-input');
-const cliOutput=document.getElementById('cli-output');
-
-function cliPrint(text,cls='cli-out'){const d=document.createElement('div');d.className='cli-line '+cls;d.innerHTML=text;cliOutput.appendChild(d);cliOutput.scrollTop=cliOutput.scrollHeight;return d}
-function cliLink(hash){return '<a class="cli-hash" href="https://testnet.arcscan.app/tx/'+hash+'" target="_blank">'+hash.slice(0,10)+'...'+hash.slice(-6)+'</a>'}
-
-cliInput.addEventListener('keydown',async e=>{
-  if(e.key==='Enter'){
-    const cmd=cliInput.value.trim();
-    if(cmd){cliHistory.push(cmd);cliIdx=cliHistory.length;cliPrint('<span class="cli-prompt">&gt;</span> '+cmd,'cli-dim')}
-    cliInput.value='';
-    if(cmd) await runCommand(cmd);
-  }else if(e.key==='ArrowUp'){
-    e.preventDefault();
-    if(cliIdx===cliHistory.length) tempInput=cliInput.value;
-    if(cliIdx>0){cliIdx--;cliInput.value=cliHistory[cliIdx]}
-  }else if(e.key==='ArrowDown'){
-    e.preventDefault();
-    if(cliIdx<cliHistory.length-1){cliIdx++;cliInput.value=cliHistory[cliIdx]}
-    else{cliIdx=cliHistory.length;cliInput.value=tempInput}
-  }
-});
-
-async function runCommand(raw){
-  await parseNL(raw);
-}
-
-function extractAmount(txt){
-  const m=txt.match(/(\d+\.?\d*)/);
-  return m?parseFloat(m[1]):null;
-}
-function extractAddr(txt){
-  const m=txt.match(/0x[a-fA-F0-9]{40}/);
-  return m?m[0]:null;
-}
-
-async function parseNL(raw){
-  const s=raw.toLowerCase();
-  const addrIn=extractAddr(raw);
-  const amtIn=extractAmount(raw);
-
-  // ── Help ──
-  if(/^(help|帮助|怎么用|功能|命令|what|usage|menu|？\s*$|\?\s*$)/.test(s)||raw.trim()==='?'){
-    cliPrint('Try typing naturally! Examples:','cli-dim');
-    cliPrint('  "查余额" / "我的钱包有多少钱"','cli-dim');
-    cliPrint('  "存 5 USDC" / "充值 10"','cli-dim');
-    cliPrint('  "提现 3" / "取回 2 个币"','cli-dim');
-    cliPrint('  "转账 0x1234...5678 5 USDC"','cli-dim');
-    cliPrint('  "查一下 0xABCD... 的余额"','cli-dim');
-    cliPrint('  "手续费多少" / "最新区块" / "BTC价格"','cli-dim');
-    cliPrint('  "网络信息" / "查看交易 0x..."','cli-dim');
-    cliPrint('  "清屏" / "你好"','cli-dim');
-    cliPrint('');
-    cliPrint('Also supports English: "check balance" "deposit 5" "gas price" etc.','cli-dim');
-    return;
-  }
-
-  // ── Clear ──
-  if(/^(clear|清屏|清理|cls)/.test(s)){cliOutput.innerHTML='';cliPrint('Cleared','cli-dim');return;}
-
-  // ── Network ──
-  if(/^(network|网络|链|chain|info$)/.test(s)||/网络信息|链信息/.test(s)){cmdNetwork();return;}
-
-  // ── Price ──
-  if(/^(price|价格|btc|比特币|汇率)/.test(s)||/btc.*(价格|多少|price)/.test(s)||/比特币.*(价格|多少)/.test(s)){cliPrint('BTC/USDT: $'+lastPrice.toLocaleString(),'cli-ok');return;}
-
-  // ── Gas ──
-  if(/^(gas|手续费|gas费|燃料|矿工费)/.test(s)||/gas.*(price|价格|多少|费用|fee)/.test(s)||/手续费.*多少/.test(s)||/多少.*手续费/.test(s)){await cmdGas();return;}
-
-  // ── Block ──
-  if(/^(block|区块)/.test(s)||/最新.*(区块|块)|区块.*最新/.test(s)){
-    const bn=s.match(/区块?\s*(\d+)/);await cmdBlock(bn?bn[1]:null);return;
-  }
-
-  // ── TX ──
-  if(/^(tx|交易)/.test(s)||/查看.*交易|交易.*状态/.test(s)){
-    const h=addrIn||(s.match(/0x[a-fA-F0-9]{64}/)||[])[0];
-    if(h) await cmdTx(h);else cliPrint('Please include a transaction hash (0x...)','cli-err');return;
-  }
-
-  // ── Balance ──
-  if(/^(余额|balance|查询|查看).*/.test(s)||/.*(余额|有钱|多少钱|balance|how much).*/.test(s)||/我的.*(钱包|账户|余额)/.test(s)||/钱包.*(余额|多少|钱)/.test(s)){
-    if(/agent|代理/.test(s)){await cmdAgent(['balance']);return;}
-    await cmdBalance(addrIn||null);return;
-  }
-
-  // ── Agent Deposit ──
-  if(/^(存|充值|deposit|入金|存入|转入).*/.test(s)||/.*(存到|充到|转入|deposit).*(agent|代理|钱包)/.test(s)||/.*(deposit|charge|top.?up).*/.test(s)){
-    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
-    if(!a){cliPrint('How much? e.g. "存 5 USDC"','cli-err');return;}
-    document.getElementById('fund-amount').value=a;
-    await depositARC();return;
-  }
-
-  // ── Agent Withdraw ──
-  if(/^(取|提现|提取|取出|withdraw|提出).*/.test(s)||/.*(取回|取出|提出|withdraw).*/.test(s)){
-    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
-    if(!a){cliPrint('How much? e.g. "提现 3 USDC"','cli-err');return;}
-    document.getElementById('fund-amount').value=a;
-    showWithdrawModal();return;
-  }
-
-  // ── Agent Balance ──
-  if(/agent.*(余额|balance)|代理.*(余额|钱|balance)/.test(s)||/agent.*钱包/.test(s)){await cmdAgent(['balance']);return;}
-
-  // ── Transfer ──
-  if(/^(transfer|转账|发送|send|转出).*/.test(s)||/.*(转给|转到|发送到|send to).*/.test(s)){
-    const to=addrIn;
-    const a=amtIn||extractAmount(s.replace(/[^0-9.]/g,''));
-    if(!to){cliPrint('Specify recipient address: "转账 0x... 5"','cli-err');return;}
-    if(!a){cliPrint('Specify amount: "转账 0x... 5"','cli-err');return;}
-    await cmdTransfer(to,String(a));return;
-  }
-
-  // ── Greeting / Casual ──
-  if(/^(hi|hello|hey|你好|嗨|哈喽)/.test(s)){cliPrint('Hello! Connect your wallet and try "查余额" or "帮助" to get started.','cli-dim');return;}
-
-  // ── Fallback ──
-  cliPrint('Hmm, not sure what you mean. Try typing <span class="cli-cmd">帮助</span> or <span class="cli-cmd">help</span>','cli-err');
-}
-
-async function cmdBalance(target){
-  if(!provider){cliPrint('Connect wallet first','cli-err');return}
-  const addr=target||address;
-  if(!ethers.isAddress(addr)){cliPrint('Invalid address: '+addr,'cli-err');return}
-  const bal=await provider.getBalance(addr);
-  cliPrint(addr+'  <span class="cli-val">'+Number(ethers.formatEther(bal)).toFixed(6)+' USDC</span>','cli-ok');
-}
-
-async function cmdAgent(sub){
-  const act=(sub[0]||'').toLowerCase();
-  if(act==='balance'){
-    const a=getAgentAddress();
-    if(!a){cliPrint('No agent wallet. Connect wallet to create one.','cli-err');return}
-    const p=new ethers.JsonRpcProvider(ARC_RPC);
-    const bal=await p.getBalance(a);
-    cliPrint(a+'  <span class="cli-val">'+Number(ethers.formatEther(bal)).toFixed(6)+' USDC</span>','cli-ok');
-  }else if(act==='deposit'){
-    const amt=sub[1];if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: agent deposit <amount>','cli-err');return}
-    document.getElementById('fund-amount').value=amt;
-    await depositARC();
-  }else if(act==='withdraw'){
-    const amt=sub[1];if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: agent withdraw <amount>','cli-err');return}
-    document.getElementById('fund-amount').value=amt;
-    showWithdrawModal();
-  }else{
-    cliPrint('Usage: agent <balance|deposit|withdraw>','cli-err');
-  }
-}
-
-async function cmdGas(){
-  if(!provider){cliPrint('Connect wallet first','cli-err');return}
-  const fee=await provider.getFeeData();
-  cliPrint('Gas Price: <span class="cli-val">'+Number(ethers.formatUnits(fee.gasPrice||0,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
-  if(fee.maxFeePerGas) cliPrint('Max Fee: <span class="cli-val">'+Number(ethers.formatUnits(fee.maxFeePerGas,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
-  if(fee.maxPriorityFeePerGas) cliPrint('Priority Fee: <span class="cli-val">'+Number(ethers.formatUnits(fee.maxPriorityFeePerGas,'gwei')).toFixed(2)+' gwei</span>','cli-ok');
-}
-
-async function cmdBlock(num){
-  if(!provider){cliPrint('Connect wallet first','cli-err');return}
-  const bn=num?parseInt(num):await provider.getBlockNumber();
-  const block=await provider.getBlock(bn);
-  if(!block){cliPrint('Block not found: '+bn,'cli-err');return}
-  cliPrint('Block #'+block.number,'cli-ok');
-  cliPrint('  Hash: '+block.hash,'cli-dim');
-  cliPrint('  Timestamp: '+new Date(Number(block.timestamp)*1000).toLocaleString(),'cli-dim');
-  cliPrint('  Transactions: '+block.transactions.length,'cli-dim');
-}
-
-async function cmdTx(hash){
-  if(!hash){cliPrint('Usage: tx <hash>','cli-err');return}
-  const p=new ethers.JsonRpcProvider(ARC_RPC);
-  const receipt=await p.getTransactionReceipt(hash);
-  if(!receipt){cliPrint('Transaction pending or not found','cli-err');return}
-  cliPrint('TX: '+cliLink(hash),'cli-ok');
-  cliPrint('  Status: '+(receipt.status===1?'<span class="cli-ok">Success</span>':'<span class="cli-err">Failed</span>'),'cli-dim');
-  cliPrint('  Block: #'+receipt.blockNumber,'cli-dim');
-  cliPrint('  From: '+receipt.from,'cli-dim');
-  cliPrint('  To: '+receipt.to,'cli-dim');
-}
-
-async function cmdTransfer(to,amt){
-  if(!signer){cliPrint('Connect wallet first','cli-err');return}
-  if(!to||!ethers.isAddress(to)){cliPrint('Usage: transfer <address> <amount>','cli-err');return}
-  if(!amt||isNaN(amt)||parseFloat(amt)<=0){cliPrint('Usage: transfer <address> <amount>','cli-err');return}
-  cliPrint('Sending '+amt+' USDC to '+to+'...','cli-dim');
-  const tx=await signer.sendTransaction({to,value:ethers.parseEther(amt)});
-  cliPrint('Submitted: '+cliLink(tx.hash),'cli-ok');
-  await tx.wait();
-  cliPrint('Confirmed! '+cliLink(tx.hash),'cli-ok');
-  if(address) document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
-}
-
-function cmdNetwork(){
-  cliPrint('Network: Arc Testnet','cli-ok');
-  cliPrint('  Chain ID: 5042002 (0x4CEF52)','cli-dim');
-  cliPrint('  RPC: '+ARC_RPC,'cli-dim');
-  cliPrint('  Currency: USDC (18 decimals)','cli-dim');
-  cliPrint('  Explorer: testnet.arcscan.app','cli-dim');
-}
-
-// Clickable help commands in output
-cliOutput.addEventListener('click',e=>{
-  if(e.target.classList.contains('cli-cmd')){
-    cliInput.value=e.target.textContent;cliInput.focus();
-  }else{
-    cliInput.focus();
-  }
-});
-
-
 const DEFAULT_STRATEGY={
   c1_time:2,c1_pmin:0.80,c1_pmax:0.97,c1_btc:30,
   c2_time:3,c2_pmin:0.80,c2_pmax:0.97,c2_btc:55,
@@ -799,75 +528,15 @@ fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
 setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
   .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
 
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — BTC 5-min prediction market. Ask the AI assistant for analysis.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
+(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — BTC 5-min prediction agent. Connect wallet to deposit & withdraw.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
 
-// ── AI Assistant ──
-const AI_WORKER_URL=''; // Paste your Cloudflare Worker URL: https://xxx.workers.dev
-const aiChat=document.getElementById('ai-chat');
-const aiInput=document.getElementById('ai-input');
-
-function addChatMsg(role,html){
-  const d=document.createElement('div');d.className='chat-msg '+role;
-  const b=document.createElement('div');b.className='chat-bubble';b.innerHTML=html;
-  d.appendChild(b);aiChat.appendChild(d);aiChat.scrollTop=aiChat.scrollHeight;return b;
+function copyInstallCmd(){
+  navigator.clipboard.writeText(document.getElementById('install-cmd').textContent).then(()=>{
+    const s=document.getElementById('copy-status');
+    s.textContent='Copied!';s.style.color='var(--neon)';
+    setTimeout(()=>s.textContent='',2000);
+  });
 }
-
-function formatAnalysis(json){
-  const dirMap={up:'<span class="direction-up">▲ UP</span>',down:'<span class="direction-down">▼ DOWN</span>',neutral:'<span class="direction-neutral">■ NEUTRAL</span>'};
-  const confMap={high:'High',medium:'Medium',low:'Low'};
-  const confClr={high:'var(--neon)',medium:'var(--orange)',low:'var(--muted)'};
-  const recMap={buy_up:'Buy UP',buy_down:'Buy DOWN',wait:'Wait',avoid:'Avoid'};
-
-  let html='';
-  if(json.analysis) html+=json.analysis+'<br><br>';
-  if(json.direction) html+='Direction: '+(dirMap[json.direction]||json.direction)+'<br>';
-  if(json.probability!=null) html+='Confidence: <span style="color:'+(confClr[json.confidence]||'var(--muted)')+'">'+(confMap[json.confidence]||json.confidence)+' ('+Math.round(json.probability*100)+'%)</span><br>';
-  if(json.priceTarget!=null) html+='Max buy price: <span style="color:var(--neon)">'+json.priceTarget.toFixed(2)+'</span><br>';
-  if(json.recommendation) html+='Recommendation: <span style="color:var(--blue);font-weight:600">'+(recMap[json.recommendation]||json.recommendation)+'</span><br>';
-  if(json.reasoning) html+='<br><span style="color:var(--muted)">'+json.reasoning.replace(/\n/g,'<br>')+'</span>';
-  return html;
-}
-
-async function sendAI(){
-  const msg=aiInput.value.trim();
-  if(!msg) return;
-  aiInput.value='';
-  addChatMsg('user',msg);
-
-  if(!AI_WORKER_URL){
-    addChatMsg('bot','<span style="color:var(--muted)">Set AI_WORKER_URL in the code to enable AI analysis.</span>');
-    return;
-  }
-
-  const bubble=addChatMsg('bot','<span class="spinner"></span> Analyzing...');
-
-  try{
-    const context={
-      btcPrice:lastPrice,
-      marketSlug:'btc-updown-5min',
-      timeRemaining:'~2-5min',
-      strategy:'Combo 1: Time<2min, Price 0.8-0.97, BTC>$30'
-    };
-
-    const resp=await fetch(AI_WORKER_URL,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg,context})
-    });
-
-    if(!resp.ok){bubble.innerHTML='<span style="color:var(--red)">AI service error. Try again.</span>';return;}
-    const json=await resp.json();
-    if(json.error){bubble.innerHTML='<span style="color:var(--red)">'+json.error+'</span>';return;}
-    bubble.innerHTML=formatAnalysis(json);
-  }catch(e){
-    bubble.innerHTML='<span style="color:var(--red)">Connection error. Check Worker URL.</span>';
-  }
-}
-
-function askAI(prompt){
-  aiInput.value=prompt;sendAI();
-}
-
-aiInput.addEventListener('keydown',e=>{if(e.key==='Enter')sendAI();});
 
 updateAgentBal();
 loadStrategy();
