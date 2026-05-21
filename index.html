@@ -254,12 +254,13 @@ function getDepPK(){return localStorage.getItem(dk())}
 function toast(msg,type='ok'){const t=document.getElementById('toast');t.innerHTML=msg;t.className='toast show '+type;setTimeout(()=>t.classList.remove('show'),4000)}
 
 async function connectWallet(){
-  if(!window.ethereum){alert('Please install OKX Wallet or MetaMask');return}
+  const w=window.ethereum;
+  if(!w){alert('Please install OKX Wallet or MetaMask');return}
   try{
-    provider=new ethers.BrowserProvider(window.ethereum);
-    await provider.send('wallet_switchEthereumChain',[{chainId:CHAIN.chainId}]).catch(()=>
-      provider.send('wallet_addEthereumChain',[CHAIN])
-    );
+    await w.request({method:'eth_requestAccounts'});
+    provider=new ethers.BrowserProvider(w);
+    try{await w.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN.chainId}]})}
+    catch(e){if(e.code===4902) await w.request({method:'wallet_addEthereumChain',params:[CHAIN]})}
     signer=await provider.getSigner();addr=await signer.getAddress();
     document.getElementById('wallet-addr-short').textContent=s(addr);
     document.getElementById('wallet-bar').style.display='block';
