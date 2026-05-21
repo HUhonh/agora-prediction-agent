@@ -254,7 +254,7 @@ function getDepPK(){return localStorage.getItem(dk())}
 function toast(msg,type='ok'){const t=document.getElementById('toast');t.innerHTML=msg;t.className='toast show '+type;setTimeout(()=>t.classList.remove('show'),4000)}
 
 async function connectWallet(){
-  if(!window.ethereum){alert('Install MetaMask');return}
+  if(!window.ethereum){alert('Please install OKX Wallet or MetaMask');return}
   try{
     provider=new ethers.BrowserProvider(window.ethereum);
     await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN.chainId}]}).catch(()=>
