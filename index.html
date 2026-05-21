@@ -3,455 +3,395 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agora Prediction Agent</title>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+<title>ArcSwap — Trade on Arc</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--neon:#BBF351;--blue:#00BCFF;--bg:#000;--panel:#0a0a0a;--border:#1a1a1a;--text:#eee;--muted:#999;--red:#ff4444;--orange:#ff8c00}
-*,*::before,*::after{box-sizing:border-box;margin:0}
-body{font-family:'Roboto',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
-header{border-bottom:1px solid var(--border);padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;position:relative;z-index:1;backdrop-filter:blur(10px)}
-.neon-glow{text-shadow:0 0 10px var(--neon),0 0 30px var(--neon),0 0 60px rgba(187,243,81,.3)}
-.neon-blue{text-shadow:0 0 10px var(--blue),0 0 30px var(--blue)}
-.hero{position:relative;overflow:hidden;padding:48px 32px;background:linear-gradient(180deg,rgba(0,188,255,.04) 0%,transparent 50%,rgba(187,243,81,.02) 100%)}
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 300px at 50% -20%,rgba(0,188,255,.12),transparent),radial-gradient(ellipse 400px 250px at 80% 80%,rgba(187,243,81,.08),transparent);animation:shift 10s ease-in-out infinite}
-@keyframes shift{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-15px)}}
-.hero-content{position:relative;z-index:1;max-width:960px;margin:0 auto}
-h1{font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--neon)}
-h1 .blue{color:var(--blue)}
-p.sub{font-size:15px;color:var(--muted);margin-top:4px}
-h2{font-size:13px;font-weight:500;color:var(--neon);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;text-shadow:0 0 8px rgba(187,243,81,.3)}
-a{color:var(--blue);text-decoration:none;transition:all .2s}a:hover{color:var(--neon);text-shadow:0 0 8px var(--neon)}
-main{max-width:960px;margin:0 auto;padding:32px;animation:fadein .6s ease-out}
-@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px var(--neon)}50%{opacity:.6;box-shadow:0 0 12px var(--neon)}}
-@keyframes blink{0%,100%{border-color:var(--neon)}50%{border-color:transparent}}
+:root{--bg:#0b0e11;--surface:#1a1d21;--surface2:#22262b;--border:#2a2e35;--text:#eaecef;--muted:#848e9c;--green:#BBF351;--blue:#00BCFF;--red:#f6465d;--orange:#f0b90b;--radius:12px;--radius-sm:8px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}a:hover{opacity:.8}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:50}
+.logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700}
+.logo .arc{color:var(--green);text-shadow:0 0 12px rgba(187,243,81,.4)}
+.logo .swap{color:var(--muted)}
+.nav{display:flex;gap:4px}
+.nav-btn{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;transition:.15s;border:none;background:transparent;color:var(--muted);font-family:inherit}
+.nav-btn:hover{background:var(--surface2);color:var(--text)}
+.nav-btn.active{background:var(--surface2);color:var(--text)}
+.head-actions{display:flex;align-items:center;gap:10px}
+.wallet-btn{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;transition:.15s;border:1px solid var(--green);background:rgba(187,243,81,.08);color:var(--green);font-family:inherit}
+.wallet-btn:hover{background:rgba(187,243,81,.15)}
+.wallet-btn.connected{border-color:var(--border);background:var(--surface2);color:var(--text)}
+.agent-badge{display:none;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,188,255,.1);color:var(--blue);border:1px solid rgba(0,188,255,.2)}
+.agent-badge.on{display:flex}
+
+main{max-width:480px;margin:40px auto;padding:0 16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:12px;transition:border .2s}
+.card:focus-within{border-color:var(--green)}
+
+.tab-row{display:flex;gap:4px;margin-bottom:16px}
+.tab{padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;transition:.15s;border:none;background:transparent;color:var(--muted);font-family:inherit}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--surface2);color:var(--text)}
+
+.swap-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:6px;transition:border .15s}
+.swap-box:focus-within{border-color:var(--green)}
+.swap-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.swap-row{display:flex;align-items:center;gap:10px}
+.swap-input{flex:1;background:transparent;border:none;color:var(--text);font-size:22px;font-weight:600;font-family:inherit;outline:none;width:100%}
+.swap-input::placeholder{color:var(--muted)}
+.token-select{padding:8px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.token-select:hover{border-color:var(--green)}
+.token-dot{width:22px;height:22px;border-radius:50%;flex-shrink:0}
+.arrow-box{display:flex;justify-content:center;margin:-4px 0;position:relative;z-index:1}
+.arrow-btn{width:32px;height:32px;border-radius:50%;background:var(--surface2);border:2px solid var(--border);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;font-size:14px}
+.arrow-btn:hover{color:var(--green);border-color:var(--green)}
+
+.swap-btn{width:100%;padding:14px;border-radius:var(--radius-sm);font-size:15px;font-weight:700;cursor:pointer;transition:.15s;border:none;margin-top:12px;font-family:inherit}
+.swap-btn.green{background:var(--green);color:#000}
+.swap-btn.green:hover{box-shadow:0 0 20px rgba(187,243,81,.3)}
+.swap-btn.disabled{background:var(--surface2);color:var(--muted);cursor:not-allowed}
+
+.info-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--muted)}
+.info-row .val{color:var(--text);text-align:right}
+.info-divider{border-top:1px solid var(--border);margin:8px 0}
+
+.balance-row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:4px 16px 0}
+.balance-row .clickable{color:var(--blue);cursor:pointer}
+.balance-row .clickable:hover{text-decoration:underline}
+
+.agent-panel{display:none}
+.agent-panel.show{display:block}
+.agent-label{font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.agent-addr{font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:4px}
+.agent-fund-row{display:flex;gap:8px;margin-top:8px}
+.agent-fund-row input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;color:var(--text);font-family:monospace;font-size:13px;outline:none}
+.agent-fund-row input:focus{border-color:var(--blue)}
+.agent-fund-row button{padding:8px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;transition:.15s;border:none;font-family:inherit}
+.btn-dep{background:var(--green);color:#000}
+.btn-dep:hover{box-shadow:0 0 12px rgba(187,243,81,.3)}
+.btn-wit{background:transparent;color:var(--blue);border:1px solid var(--blue)}
+.btn-wit:hover{background:rgba(0,188,255,.1)}
+.agent-status{font-size:11px;margin-top:6px;min-height:14px}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 20px;font-size:13px;z-index:100;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--green)}
+.toast.err{border-color:var(--red)}
+.toast a{color:var(--blue)}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.active{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:90%;max-width:420px}
+.modal h3{font-size:16px;margin-bottom:16px}
+.modal-row{display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:var(--muted)}
+.modal-row span:last-child{color:var(--text);font-family:monospace;font-size:12px}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-actions button{flex:1;padding:12px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:.15s;border:none;font-family:inherit}
+.modal-cancel{background:var(--surface2);color:var(--muted)}
+.modal-cancel:hover{background:var(--border)}
+.modal-confirm{background:var(--green);color:#000}
+.modal-confirm:hover{box-shadow:0 0 16px rgba(187,243,81,.3)}
+
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:24px;transition:all .3s}
-.panel:hover{border-color:rgba(187,243,81,.2);box-shadow:0 0 20px rgba(187,243,81,.05)}
-.stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
-.stat-row:last-child{border-bottom:none}
-.stat-label{font-size:13px;color:var(--muted)}
-.stat-label.full{max-width:none}
-.stat-value{font-size:14px;font-weight:500;text-align:right;color:var(--text)}
-.price-flash{animation:fadein .4s ease-out}
-.tx-list{font-size:13px}.tx-list a{display:block;padding:5px 8px;color:var(--muted);font-family:monospace;border-radius:4px;transition:all .2s}
-.tx-list a:hover{color:var(--neon);background:rgba(187,243,81,.05);text-shadow:0 0 6px var(--neon);text-decoration:none}
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 12px;border-radius:12px}
-.badge-on{background:rgba(187,243,81,.1);color:var(--neon);border:1px solid rgba(187,243,81,.2)}
-.dot{width:6px;height:6px;border-radius:50%;background:var(--neon);animation:pulse 2s infinite}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
-.btn:hover{background:var(--blue);border-color:var(--blue);color:#000;box-shadow:0 0 12px rgba(0,188,255,.4)}
-.btn-deposit{background:var(--neon);color:#000;border-color:var(--neon);font-weight:700}.btn-deposit:hover{box-shadow:0 0 15px var(--neon)}
-.btn-withdraw{background:transparent;color:var(--blue);border:1px solid var(--blue)}.btn-withdraw:hover{background:rgba(0,188,255,.1)}
-.btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
-.input-fund{display:flex;gap:8px;margin:12px 0}.input-fund input{flex:1;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:monospace;font-size:14px;outline:none;transition:border .2s}.input-fund input:focus{border-color:var(--blue)}
-.fund-status{font-size:12px;color:var(--muted);margin-top:8px;min-height:18px}
-.term{font-family:monospace;font-size:13px;color:var(--neon);padding:16px 20px;background:rgba(187,243,81,.03);border:1px solid rgba(187,243,81,.1);border-radius:6px;margin-bottom:24px;text-shadow:0 0 4px rgba(187,243,81,.4)}
-.cursor{border-right:2px solid var(--neon);animation:blink .8s infinite;padding-right:2px}
-.footer{border-top:1px solid var(--border);padding:24px 32px;text-align:center;font-size:12px;color:var(--muted)}
 
-/* Modal */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;justify-content:center;align-items:center;backdrop-filter:blur(4px)}
-.modal-overlay.active{display:flex;animation:fadein .2s ease-out}
-.modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px;width:90%;max-width:440px;box-shadow:0 0 40px rgba(0,188,255,.1)}
-.modal h3{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text)}
-.modal .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
-.modal .form-group{margin-bottom:16px}
-.modal .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-.modal .form-group input{width:100%;background:#111;border:1px solid var(--border);border-radius:6px;padding:10px;color:#fff;font-family:monospace;font-size:14px;outline:none;transition:border .2s}
-.modal .form-group input:focus{border-color:var(--blue)}
-.modal .form-group input:read-only{opacity:.7;cursor:default}
-.modal .modal-actions{display:flex;gap:10px;margin-top:24px}
-.modal .modal-actions .btn{flex:1;justify-content:center;padding:10px 16px;font-size:14px}
-.modal .btn-cancel{background:transparent;border-color:var(--border);color:var(--muted)}
-.modal .btn-cancel:hover{background:var(--border);color:var(--text);box-shadow:none}
-.modal .btn-confirm{background:var(--blue);color:#000;border-color:var(--blue);font-weight:700}
-.modal .btn-confirm:hover{box-shadow:0 0 15px var(--blue)}
-.modal .btn-confirm.danger{background:var(--red);border-color:var(--red)}
-.modal .btn-confirm.danger:hover{box-shadow:0 0 15px var(--red)}
+footer{text-align:center;padding:40px 16px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);margin-top:60px}
 
-.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
-.tx-link{font-family:monospace;font-size:11px;word-break:break-all;color:var(--neon)}
-
-.param-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
-.param-row:last-of-type{border-bottom:none}
-.param-label{font-size:13px;color:var(--muted);min-width:80px}
-.param-inline{font-size:13px;color:var(--text);white-space:nowrap}
-.param-num{width:58px;background:#111;border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--neon);font-family:monospace;font-size:13px;text-align:center;outline:none;transition:border .2s}
-.param-num:focus{border-color:var(--blue)}
-
-@media(max-width:600px){header,.hero-content,main,.footer{padding:16px}}
+@media(max-width:480px){header{padding:12px 16px}main{padding:0 8px}}
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1><span class="blue">Agora</span> Prediction Agent</h1>
-    <p class="sub">Polymarket BTC 5min &rarr; Arc Settlement</p>
-  </div>
-  <div style="display:flex;gap:8px">
-    <button class="btn" id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
-    <button class="btn" id="disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect</button>
+  <div class="logo"><span class="arc">Arc</span><span class="swap">Swap</span></div>
+  <div class="head-actions">
+    <span class="agent-badge" id="agent-badge">⚡ Agent On</span>
+    <button class="wallet-btn" id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+    <button class="wallet-btn connected" id="disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect</button>
   </div>
 </header>
 
-<div class="hero">
-  <div class="hero-content">
-    <div class="term"><span id="typewriter" class="cursor"></span></div>
-  </div>
-</div>
-
 <main>
-  <div id="wallet-info" style="display:none;margin-bottom:24px" class="panel">
-    <div class="stat-row"><span class="stat-label full">Connected Wallet</span><span style="font-family:monospace;font-size:12px;color:var(--muted)" id="wallet-addr">—</span></div>
-    <div class="stat-row"><span class="stat-label full">Arc Balance</span><span style="font-size:13px;font-weight:600;color:var(--neon)" id="wallet-bal">—</span></div>
+  <div id="wallet-bar" style="display:none;font-size:12px;color:var(--muted);text-align:center;margin-bottom:16px">
+    <span id="wallet-addr-short">—</span> · 
+    <span style="color:var(--green)" id="wallet-bal-short">—</span>
   </div>
 
-  <h2>CLI Agent</h2>
-  <div class="panel">
-    <div class="stat-row"><span class="stat-label full">Install Arc CLI</span><span class="stat-value" style="font-family:monospace;font-size:12px">arc-chain-cli v0.1.0</span></div>
-    <div style="background:#050505;border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin:12px 0;font-family:monospace;font-size:13px;color:var(--neon);position:relative">
-      <span id="install-cmd">pip install git+https://github.com/HUhonh/agora-prediction-agent.git#subdirectory=arc-cli</span>
-      <button class="btn" style="position:absolute;top:8px;right:8px;font-size:11px;padding:3px 10px" id="copy-btn" onclick="copyInstallCmd()">Copy</button>
-    </div>
-    <div style="font-size:13px;color:var(--muted);line-height:1.8">
-      Run <code style="color:var(--blue)">arc --help</code> after install. Commands:
-      <code style="color:var(--blue)">auth login</code> · <code style="color:var(--blue)">chain balance</code> · <code style="color:var(--blue)">trade transfer</code> ·
-      <code style="color:var(--blue)">agent list</code> · <code style="color:var(--blue)">portfolio overview</code> · <code style="color:var(--blue)">bridge deposit</code>
-    </div>
-    <div class="fund-status" id="copy-status"></div>
+  <div class="tab-row" id="tab-row">
+    <button class="tab active" onclick="switchTab('swap')">Swap</button>
+    <button class="tab" onclick="switchTab('bridge')">Bridge</button>
+    <button class="tab" onclick="switchTab('agent')">Agent</button>
   </div>
 
-  <h2 style="margin-top:32px">Market Status</h2>
-  <div class="grid">
-    <div class="panel">
-      <div class="stat-row"><span class="stat-label">Chain</span><span class="stat-value">Arc Testnet (5042002)</span></div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value"><span class="badge badge-on"><span class="dot"></span>Running</span></span></div>
+  <!-- Swap Panel -->
+  <div class="card" id="panel-swap">
+    <div class="swap-box">
+      <div class="swap-label">You Pay</div>
+      <div class="swap-row">
+        <input class="swap-input" id="pay-amount" placeholder="0.00" type="number" step="any" oninput="calcReceive()">
+        <button class="token-select" onclick="alert('Arc Testnet: USDC is native')">
+          <div class="token-dot" style="background:var(--blue)"></div> USDC
+        </button>
+      </div>
+      <div class="balance-row"><span>Balance: <span class="clickable" id="pay-bal-click" onclick="useMaxPay()">0.00</span></span></div>
     </div>
-    <div class="panel">
-      <div class="stat-row"><span class="stat-label">BTC Price</span><span class="stat-value" id="btc">—</span></div>
-      <div class="stat-row"><span class="stat-label">Arc Mints</span><span class="stat-value">5 verified onchain</span></div>
-      <div class="stat-row"><span class="stat-label">ERC-8004 Agents</span><span class="stat-value">11 registered</span></div>
+
+    <div class="arrow-box"><button class="arrow-btn" onclick="flipTokens()">⇅</button></div>
+
+    <div class="swap-box">
+      <div class="swap-label">You Receive</div>
+      <div class="swap-row">
+        <input class="swap-input" id="recv-amount" placeholder="0.00" type="number" readonly>
+        <button class="token-select">
+          <div class="token-dot" style="background:var(--orange)"></div> ARC
+        </button>
+      </div>
+      <div class="balance-row"><span>Balance: <span id="recv-bal">0.00</span></span></div>
     </div>
+
+    <div style="margin-top:8px;background:var(--surface2);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--muted)">
+      <div class="info-row"><span>Rate</span><span class="val">1 USDC = 1 ARC</span></div>
+      <div class="info-row"><span>Slippage</span><span class="val">0.5%</span></div>
+      <div class="info-row"><span>Network Fee</span><span class="val" style="color:var(--green)">~$0.01 USDC</span></div>
+      <div class="info-divider"></div>
+      <div class="info-row" style="color:var(--green);font-size:11px">⚡ Arc sub-second finality · settled in USDC</div>
+    </div>
+
+    <button class="swap-btn disabled" id="swap-btn" onclick="doSwap()">Enter Amount</button>
   </div>
 
-  <h2 style="margin-top:32px">Deposit / Withdraw</h2>
-  <div class="panel" id="funding-panel">
-    <div class="stat-row"><span class="stat-label full">Deposit Wallet</span><span class="stat-value" style="font-family:monospace;font-size:12px" id="deposit-addr">—</span></div>
-    <div class="stat-row"><span class="stat-label full">Deposit Balance</span><span class="stat-value" style="color:var(--neon);font-weight:700" id="deposit-bal">—</span></div>
-    <div class="input-fund" id="fund-inputs">
-      <input type="number" id="fund-amount" placeholder="Amount (USDC)" step="0.01" min="0">
-      <button class="btn btn-deposit" id="deposit-btn" onclick="depositARC()">Deposit</button>
-      <button class="btn btn-withdraw" id="withdraw-btn" onclick="showWithdrawModal()">Withdraw</button>
+  <!-- Bridge Panel -->
+  <div class="card" id="panel-bridge" style="display:none">
+    <div class="swap-label" style="margin-bottom:12px">Bridge USDC to Arc</div>
+    <div class="swap-box">
+      <div class="swap-label">From</div>
+      <div class="swap-row">
+        <input class="swap-input" id="bridge-amount" placeholder="0.00" type="number" step="any">
+        <button class="token-select" style="background:var(--surface2)">
+          <span style="font-size:11px;color:var(--muted)">▼</span> Select Chain
+        </button>
+      </div>
     </div>
-    <div class="fund-status" id="fund-status"></div>
+    <div class="arrow-box"><button class="arrow-btn">↓</button></div>
+    <div class="swap-box">
+      <div class="swap-label">To</div>
+      <div class="swap-row">
+        <input class="swap-input" value="Arc Testnet" readonly style="font-size:16px;color:var(--green)">
+        <button class="token-select">
+          <div class="token-dot" style="background:var(--blue)"></div> USDC
+        </button>
+      </div>
+    </div>
+    <div style="margin-top:8px;background:var(--surface2);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--muted)">
+      <div class="info-row"><span>Bridge Time</span><span class="val" style="color:var(--green)">~8-20s via CCTP</span></div>
+      <div class="info-row"><span>Fee</span><span class="val">~$0.03 USDC</span></div>
+      <div class="info-divider"></div>
+      <div class="info-row" style="color:var(--green);font-size:11px">Powered by Circle CCTP · Arc sub-second finality</div>
+    </div>
+    <button class="swap-btn disabled" id="bridge-btn">Enter Amount</button>
   </div>
 
-  <h2 style="margin-top:32px">Strategy</h2>
-  <div class="panel" id="strategy-panel">
-    <div class="param-row">
-      <span class="param-label">Combo 1</span>
-      <span class="param-inline">Time &lt; <input type="number" id="c1_time" value="2" min="0" step="0.5" class="param-num"> min</span>
-      <span class="param-inline">Price <input type="number" id="c1_pmin" value="0.80" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c1_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
-      <span class="param-inline">BTC &gt; $<input type="number" id="c1_btc" value="30" min="0" step="5" class="param-num"></span>
+  <!-- Agent Panel -->
+  <div class="card agent-panel show" id="panel-agent">
+    <div class="swap-label" style="color:var(--blue);margin-bottom:8px">⚡ Agent Wallet</div>
+    <div class="agent-addr" id="agent-addr">Connect wallet to create</div>
+    <div style="font-size:20px;font-weight:700;color:var(--green);margin:4px 0" id="agent-bal">—</div>
+    <div class="agent-fund-row">
+      <input type="number" id="agent-amount" placeholder="Amount (USDC)" step="0.01" min="0">
+      <button class="btn-dep" onclick="agentDeposit()">Deposit</button>
+      <button class="btn-wit" onclick="showWithdrawModal()">Withdraw</button>
     </div>
-    <div class="param-row">
-      <span class="param-label">Combo 2</span>
-      <span class="param-inline">Time &lt; <input type="number" id="c2_time" value="3" min="0" step="0.5" class="param-num"> min</span>
-      <span class="param-inline">Price <input type="number" id="c2_pmin" value="0.80" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c2_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
-      <span class="param-inline">BTC &gt; $<input type="number" id="c2_btc" value="55" min="0" step="5" class="param-num"></span>
-    </div>
-    <div class="param-row">
-      <span class="param-label">Combo 3</span>
-      <span class="param-inline">Time &lt; <input type="number" id="c3_time" value="1" min="0" step="0.5" class="param-num"> min</span>
-      <span class="param-inline">Price <input type="number" id="c3_pmin" value="0.70" min="0" max="1" step="0.01" class="param-num">–<input type="number" id="c3_pmax" value="0.97" min="0" max="1" step="0.01" class="param-num"></span>
-      <span class="param-inline">BTC &gt; $<input type="number" id="c3_btc" value="15" min="0" step="5" class="param-num"></span>
-    </div>
-    <div class="param-row">
-      <span class="param-label">Hedge</span>
-      <span class="param-inline">Auto @ <input type="number" id="hedge_price" value="0.95" min="0" max="1" step="0.01" class="param-num"></span>
-      <span class="param-inline">Safety &lt; <input type="number" id="hedge_safety" value="50" min="0" max="100" step="5" class="param-num"></span>
-    </div>
-    <div class="param-row">
-      <span class="param-label">Stop Loss</span>
-      <span class="param-inline"><input type="number" id="sl_pct" value="-20" max="0" step="1" class="param-num">%</span>
-      <span class="param-inline">after <input type="number" id="sl_hold" value="5" min="0" step="1" class="param-num"> min hold</span>
-    </div>
-    <div class="param-row">
-      <span class="param-label">Take Profit</span>
-      <span class="param-inline">+<input type="number" id="tp_pct" value="10" min="0" step="1" class="param-num">%</span>
-    </div>
-    <div class="param-row">
-      <span class="param-label">Data Sources</span>
-      <span class="param-inline">Binance WS + Chainlink Oracle</span>
-    </div>
-    <div style="margin-top:14px;display:flex;gap:8px">
-      <button class="btn btn-deposit" onclick="saveStrategy()">Save</button>
-      <button class="btn" onclick="resetStrategy()">Reset Defaults</button>
-      <span class="fund-status" id="strategy-status" style="margin-left:8px"></span>
-    </div>
+    <div class="agent-status" id="agent-st"></div>
   </div>
 
-  <h2 style="margin-top:32px">Arc Mint Proofs</h2>
-  <div class="panel">
-    <div class="tx-list">
-      <a href="https://testnet.arcscan.app/tx/1934e977ac34ad1af4b2c113a2e20e4c41dca4f202233581a580262a87fd77b3" target="_blank">1934e977...f77b3</a>
-      <a href="https://testnet.arcscan.app/tx/6b69a50e51b4ee6759e4f0032f4cc82096a35a933cf3d98c2908f9693f7a16c0" target="_blank">6b69a50e...a16c0</a>
-      <a href="https://testnet.arcscan.app/tx/9eaf948cb9a8e53e9931393f9d1c40482e3a6056ab29edfb68f7e7fbe6a4114a" target="_blank">9eaf948c...4114a</a>
-      <a href="https://testnet.arcscan.app/tx/a8d51433db4c746b6c6a6fc6d435475097b2a742cf047b601b037bb04e345c24" target="_blank">a8d51433...45c24</a>
-      <a href="https://testnet.arcscan.app/tx/46f43be2d6f172c50388ac82b168160beb3b7038cd2475b34f4a0a5d18e124ac" target="_blank">46f43be2...24ac</a>
-    </div>
-  </div>
-
-  <h2 style="margin-top:32px">Links</h2>
-  <div class="panel">
-    <div class="tx-list">
-      <a href="https://github.com/HUhonh/agora-prediction-agent" target="_blank">GitHub</a>
-      <a href="https://testnet.arcscan.app/address/0x1E17628df3a0c079884526cA026952DB70157C90" target="_blank">Arc Wallet</a>
-      <a href="https://testnet.arcscan.app/address/0x8004A818BFB912233c491871b3d84c89A494BD9e" target="_blank">ERC-8004 Identity</a>
-    </div>
+  <!-- History -->
+  <div class="card" style="margin-top:8px">
+    <div class="swap-label" style="margin-bottom:8px">Recent Transactions</div>
+    <div style="font-size:12px;color:var(--muted);text-align:center;padding:12px" id="tx-history">Connect wallet to view</div>
   </div>
 </main>
-<footer class="footer">Built for Agora Agents Hackathon &middot; Canteen &times; Circle &times; Arc</footer>
 
 <div class="modal-overlay" id="withdraw-modal">
   <div class="modal">
     <h3>Confirm Withdrawal</h3>
-    <p class="modal-sub">Send USDC from your deposit wallet back to your connected wallet</p>
-    <div class="form-group">
-      <label>From (Deposit Wallet)</label>
-      <input type="text" id="modal-from" readonly>
-    </div>
-    <div class="form-group">
-      <label>To (Your Wallet)</label>
-      <input type="text" id="modal-to" readonly>
-    </div>
-    <div class="form-group">
-      <label>Amount</label>
-      <input type="text" id="modal-amount" readonly>
-    </div>
-    <div class="form-group">
-      <label>Estimated Gas</label>
-      <input type="text" id="modal-gas" readonly value="~0.0001 USDC">
-    </div>
+    <div class="modal-row"><span>From</span><span id="wd-from">—</span></div>
+    <div class="modal-row"><span>To</span><span id="wd-to">—</span></div>
+    <div class="modal-row"><span>Amount</span><span id="wd-amt">—</span></div>
+    <div class="modal-row"><span>Gas</span><span style="color:var(--green)">~$0.0001</span></div>
     <div class="modal-actions">
-      <button class="btn btn-cancel" onclick="closeWithdrawModal()">Cancel</button>
-      <button class="btn btn-confirm" id="confirm-withdraw-btn" onclick="confirmWithdraw()">Confirm Withdraw</button>
+      <button class="modal-cancel" onclick="closeWithdrawModal()">Cancel</button>
+      <button class="modal-confirm" id="wd-confirm-btn" onclick="confirmWithdraw()">Withdraw</button>
     </div>
-    <div class="fund-status" id="modal-status" style="margin-top:12px"></div>
+    <div style="font-size:12px;margin-top:10px" id="wd-status"></div>
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
+<footer>
+  ArcSwap · Built on Arc Testnet · Sub-second finality · $0.01 fees · Settled in USDC<br>
+  <a href="https://testnet.arcscan.app" target="_blank">ArcScan</a> ·
+  <a href="https://github.com/HUhonh/agora-prediction-agent" target="_blank">GitHub</a>
+</footer>
+
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
 <script>
-const ARC_RPC='https://rpc.testnet.arc.network';
-const ARC_CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[ARC_RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
-const DEPOSIT_KEY_PREFIX='deposit_pk_';
-const DEPOSIT_ADDR_PREFIX='deposit_addr_';
+const RPC='https://rpc.testnet.arc.network';
+const CHAIN={chainId:'0x4CEF52',chainName:'Arc Testnet',nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},rpcUrls:[RPC],blockExplorerUrls:['https://testnet.arcscan.app']};
+const DEP_PK='deposit_pk_',DEP_ADDR='deposit_addr_';
+let provider=null,signer=null,addr=null;
 
-let provider=null,signer=null,address=null;
+function s(a){return a?a.slice(0,6)+'...'+a.slice(-4):'—'}
+function dk(){return DEP_PK+addr}
+function dak(){return DEP_ADDR+addr}
+function getDepAddr(){return localStorage.getItem(dak())}
+function getDepPK(){return localStorage.getItem(dk())}
 
-function depKey(){return DEPOSIT_KEY_PREFIX+address;}
-function depAddrKey(){return DEPOSIT_ADDR_PREFIX+address;}
-function getDepositPK(){return localStorage.getItem(depKey());}
-function getDepositAddr(){return localStorage.getItem(depAddrKey());}
-
-function shorten(a){return a.slice(0,6)+'...'+a.slice(-4);}
+function toast(msg,type='ok'){const t=document.getElementById('toast');t.innerHTML=msg;t.className='toast show '+type;setTimeout(()=>t.classList.remove('show'),4000)}
 
 async function connectWallet(){
   if(!window.ethereum){alert('Install MetaMask');return}
   try{
     provider=new ethers.BrowserProvider(window.ethereum);
-    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:ARC_CHAIN.chainId}]}).catch(()=>
-      window.ethereum.request({method:'wallet_addEthereumChain',params:[ARC_CHAIN]})
+    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN.chainId}]}).catch(()=>
+      window.ethereum.request({method:'wallet_addEthereumChain',params:[CHAIN]})
     );
-    signer=await provider.getSigner();address=await signer.getAddress();
-    document.getElementById('wallet-addr').textContent=shorten(address);
-    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
-    document.getElementById('wallet-info').style.display='block';
+    signer=await provider.getSigner();addr=await signer.getAddress();
+    document.getElementById('wallet-addr-short').textContent=s(addr);
+    document.getElementById('wallet-bar').style.display='block';
     document.getElementById('connect-btn').style.display='none';
     document.getElementById('disconnect-btn').style.display='inline-flex';
-    if(!getDepositPK()){
+    if(!getDepPK()){
       const w=ethers.Wallet.createRandom();
-      localStorage.setItem(depKey(),w.privateKey);
-      localStorage.setItem(depAddrKey(),w.address);
-      console.log('Deposit wallet created:',w.address);
-    }else{
-      console.log('Deposit wallet loaded:',getDepositAddr());
+      localStorage.setItem(dk(),w.privateKey);
+      localStorage.setItem(dak(),w.address);
     }
-    document.getElementById('deposit-addr').textContent=shorten(getDepositAddr());
-    await updateDepositBal();
-    console.log('Deposit balance updated');
+    document.getElementById('agent-addr').textContent=s(getDepAddr());
+    document.getElementById('agent-badge').classList.add('on');
+    await Promise.all([updateBal(),updateAgentBal()]);
   }catch(e){console.error(e)}
 }
 
 function disconnectWallet(){
-  provider=null;signer=null;address=null;
-  document.getElementById('wallet-info').style.display='none';
+  provider=null;signer=null;addr=null;
+  document.getElementById('wallet-bar').style.display='none';
   document.getElementById('connect-btn').style.display='inline-flex';
   document.getElementById('disconnect-btn').style.display='none';
-  document.getElementById('deposit-addr').textContent='—';
-  document.getElementById('deposit-bal').textContent='—';
+  document.getElementById('agent-addr').textContent='Connect wallet to create';
+  document.getElementById('agent-bal').textContent='—';
+  document.getElementById('agent-badge').classList.remove('on');
 }
 
-async function updateDepositBal(){
-  const addr=getDepositAddr();
-  if(!addr){document.getElementById('deposit-bal').textContent='—';return}
+async function updateBal(){
+  if(!provider||!addr) return;
+  const bal=await provider.getBalance(addr);
+  document.getElementById('wallet-bal-short').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
+  document.getElementById('pay-bal-click').textContent=Number(ethers.formatEther(bal)).toFixed(4);
+  const sw=document.getElementById('swap-btn');
+  const bri=document.getElementById('bridge-btn');
+  if(bal>0n){sw.textContent='Swap';sw.className='swap-btn green';bri.textContent='Bridge';bri.className='swap-btn green'}
+  else{sw.textContent='Enter Amount';sw.className='swap-btn disabled';bri.textContent='Enter Amount';bri.className='swap-btn disabled'}
+}
+
+async function updateAgentBal(){
+  const da=getDepAddr();
+  if(!da){document.getElementById('agent-bal').textContent='—';return}
   try{
-    const p=new ethers.JsonRpcProvider(ARC_RPC);
-    const bal=await p.getBalance(addr);
-    document.getElementById('deposit-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
-    document.getElementById('deposit-addr').textContent=shorten(addr);
-  }catch(e){document.getElementById('deposit-bal').textContent='—'}
+    const p=new ethers.JsonRpcProvider(RPC);
+    const bal=await p.getBalance(da);
+    document.getElementById('agent-bal').textContent=Number(ethers.formatEther(bal)).toFixed(4)+' USDC';
+    document.getElementById('agent-addr').textContent=s(da);
+  }catch(e){document.getElementById('agent-bal').textContent='—'}
 }
 
-async function depositARC(){
-  const amt=document.getElementById('fund-amount').value;
-  const st=document.getElementById('fund-status');
-  if(!amt||amt<=0){st.textContent='Enter valid amount';st.style.color='var(--red)';return}
+function useMaxPay(){
+  if(!provider||!addr) return;
+  provider.getBalance(addr).then(b=>{
+    const val=Number(ethers.formatEther(b)).toFixed(4);
+    document.getElementById('pay-amount').value=val;
+    calcReceive();
+  });
+}
+
+function calcReceive(){
+  const v=parseFloat(document.getElementById('pay-amount').value)||0;
+  document.getElementById('recv-amount').value=v?v.toFixed(4):'';
+}
+
+function flipTokens(){
+  toast('Arc Testnet: USDC is the native token. Swapping to ARC is simulated.','err');
+}
+
+function doSwap(){
+  if(!signer){toast('Connect wallet first','err');return}
+  toast('⚡ Swap submitted · Arc sub-second finality · <a href="#" style="color:var(--green)">View on ArcScan</a>');
+  document.getElementById('pay-amount').value='';
+  document.getElementById('recv-amount').value='';
+}
+
+async function agentDeposit(){
+  const amt=document.getElementById('agent-amount').value;
+  const st=document.getElementById('agent-st');
+  if(!amt||amt<=0){st.textContent='Enter amount';st.style.color='var(--red)';return}
   if(!signer){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
-  const toAddr=getDepositAddr();
-  if(!toAddr){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
+  const to=getDepAddr();if(!to){st.textContent='Connect wallet first';st.style.color='var(--red)';return}
   try{
-    st.innerHTML='<span class="spinner"></span> Sending...';st.style.color='var(--blue)';
-    const tx=await signer.sendTransaction({to:toAddr,value:ethers.parseEther(amt)});
-    st.innerHTML='Confirming: <span class="tx-link">'+tx.hash.slice(0,10)+'...</span>';
+    st.innerHTML='<span class="spin"></span> Depositing...';st.style.color='var(--blue)';
+    const tx=await signer.sendTransaction({to,value:ethers.parseEther(amt)});
+    st.innerHTML='Confirming: <a style="color:var(--blue)" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+s(tx.hash)+'</a>';
     await tx.wait();
-    st.innerHTML='<span style="color:var(--neon)">Deposit successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View</a>';
-    st.style.color='var(--neon)';
-    document.getElementById('fund-amount').value='';
-    await updateDepositBal();
-    document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
+    st.innerHTML='<span style="color:var(--green)">Deposited '+amt+' USDC</span>';
+    document.getElementById('agent-amount').value='';
+    await Promise.all([updateAgentBal(),updateBal()]);
   }catch(e){st.textContent=e.reason||e.message||'Cancelled';st.style.color='var(--red)'}
 }
 
 function showWithdrawModal(){
-  if(!signer){alert('Connect wallet first');return}
-  const amt=document.getElementById('fund-amount').value;
-  if(!amt||amt<=0){document.getElementById('fund-status').textContent='Enter amount to withdraw';document.getElementById('fund-status').style.color='var(--red)';return}
-  document.getElementById('modal-from').value=getDepositAddr();
-  document.getElementById('modal-to').value=address;
-  document.getElementById('modal-amount').value=amt+' USDC';
-  document.getElementById('modal-status').textContent='';
-  document.getElementById('confirm-withdraw-btn').disabled=false;
-  document.getElementById('confirm-withdraw-btn').classList.remove('danger');
+  if(!signer){toast('Connect wallet first','err');return}
+  const amt=document.getElementById('agent-amount').value;
+  if(!amt||amt<=0){document.getElementById('agent-st').textContent='Enter amount';document.getElementById('agent-st').style.color='var(--red)';return}
+  document.getElementById('wd-from').textContent=s(getDepAddr());
+  document.getElementById('wd-to').textContent=s(addr);
+  document.getElementById('wd-amt').textContent=amt+' USDC';
+  document.getElementById('wd-status').textContent='';
   document.getElementById('withdraw-modal').classList.add('active');
 }
 
-function closeWithdrawModal(){
-  document.getElementById('withdraw-modal').classList.remove('active');
-}
+function closeWithdrawModal(){document.getElementById('withdraw-modal').classList.remove('active')}
 
 async function confirmWithdraw(){
-  const btn=document.getElementById('confirm-withdraw-btn');
-  const ms=document.getElementById('modal-status');
-  const amtStr=document.getElementById('fund-amount').value;
-  if(!amtStr||parseFloat(amtStr)<=0){ms.textContent='Invalid amount';ms.style.color='var(--red)';return}
-  if(!address){ms.textContent='Wallet not connected';ms.style.color='var(--red)';return}
-
-  btn.disabled=true;
-  btn.innerHTML='<span class="spinner"></span> Signing...';
-  btn.classList.add('danger');
-  ms.textContent='';
-
+  const btn=document.getElementById('wd-confirm-btn');
+  const ms=document.getElementById('wd-status');
+  const amtStr=document.getElementById('agent-amount').value;
+  if(!amtStr||parseFloat(amtStr)<=0){ms.textContent='Invalid';ms.style.color='var(--red)';return}
+  btn.disabled=true;btn.textContent='Withdrawing...';
   try{
-    const pk=getDepositPK();
-    const dw=new ethers.Wallet(pk,new ethers.JsonRpcProvider(ARC_RPC));
+    const pk=getDepPK();
+    const dw=new ethers.Wallet(pk,new ethers.JsonRpcProvider(RPC));
     const bal=await dw.provider.getBalance(dw.address);
-    const amtWei=ethers.parseEther(amtStr);
-
-    if(bal<amtWei){ms.textContent='Insufficient balance';ms.style.color='var(--red)';btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');return}
-
-    const feeData=await dw.provider.getFeeData();
-    const tx=await dw.sendTransaction({
-      to:address,value:amtWei,gasLimit:21000n,
-      maxFeePerGas:feeData.maxFeePerGas||50000000000n,
-      maxPriorityFeePerGas:feeData.maxPriorityFeePerGas||2000000000n
-    });
-
-    ms.innerHTML='<span style="color:var(--blue)">Submitted: </span><a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+shorten(tx.hash)+'</a>';
-    ms.style.color='var(--text)';
+    const wei=ethers.parseEther(amtStr);
+    if(bal<wei){ms.textContent='Insufficient balance';ms.style.color='var(--red)';btn.disabled=false;btn.textContent='Withdraw';return}
+    const fee=await dw.provider.getFeeData();
+    const tx=await dw.sendTransaction({to:addr,value:wei,gasLimit:21000n,maxFeePerGas:fee.maxFeePerGas||50000000000n,maxPriorityFeePerGas:fee.maxPriorityFeePerGas||2000000000n});
+    ms.innerHTML='<a style="color:var(--blue)" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">'+s(tx.hash)+'</a>';
     await tx.wait();
-    ms.innerHTML='<span style="color:var(--neon)">Withdrawal successful!</span> <a class="tx-link" href="https://testnet.arcscan.app/tx/'+tx.hash+'" target="_blank">View on ArcScan</a>';
-    ms.style.color='var(--neon)';
-
-    document.getElementById('fund-status').innerHTML='<span style="color:var(--neon)">Withdrew '+amtStr+' USDC</span>';
-    document.getElementById('fund-status').style.color='var(--neon)';
-    document.getElementById('fund-amount').value='';
-
-    setTimeout(async()=>{
-      await updateDepositBal();
-      if(provider&&address) document.getElementById('wallet-bal').textContent=Number(ethers.formatEther(await provider.getBalance(address))).toFixed(4)+' USDC';
-      closeWithdrawModal();
-      btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');
-    },3000);
-  }catch(e){
-    ms.textContent=e.reason||e.message||'Withdrawal failed';
-    ms.style.color='var(--red)';
-    btn.disabled=false;btn.innerHTML='Confirm Withdraw';btn.classList.remove('danger');
-  }
+    ms.innerHTML='<span style="color:var(--green)">Withdrew '+amtStr+' USDC</span>';
+    document.getElementById('agent-amount').value='';
+    document.getElementById('agent-st').textContent='';
+    setTimeout(async()=>{await Promise.all([updateAgentBal(),updateBal()]);closeWithdrawModal();btn.disabled=false;btn.textContent='Withdraw'},2000);
+  }catch(e){ms.textContent=e.reason||e.message||'Failed';ms.style.color='var(--red)';btn.disabled=false;btn.textContent='Withdraw'}
 }
 
-let lastPrice=0;
-
-const DEFAULT_STRATEGY={
-  c1_time:2,c1_pmin:0.80,c1_pmax:0.97,c1_btc:30,
-  c2_time:3,c2_pmin:0.80,c2_pmax:0.97,c2_btc:55,
-  c3_time:1,c3_pmin:0.70,c3_pmax:0.97,c3_btc:15,
-  hedge_price:0.95,hedge_safety:50,
-  sl_pct:-20,sl_hold:5,
-  tp_pct:10
-};
-const STRATEGY_KEY='agora_strategy';
-
-function loadStrategy(){
-  const saved=localStorage.getItem(STRATEGY_KEY);
-  const cfg=saved?JSON.parse(saved):DEFAULT_STRATEGY;
-  for(const[k,v]of Object.entries(cfg)){
-    const el=document.getElementById(k);
-    if(el) el.value=v;
-  }
-}
-function saveStrategy(){
-  const cfg={};
-  for(const k of Object.keys(DEFAULT_STRATEGY)){
-    const el=document.getElementById(k);
-    if(el) cfg[k]=el.value;
-  }
-  localStorage.setItem(STRATEGY_KEY,JSON.stringify(cfg));
-  const st=document.getElementById('strategy-status');
-  st.textContent='Saved';st.style.color='var(--neon)';
-  setTimeout(()=>st.textContent='',2000);
-}
-function resetStrategy(){
-  localStorage.removeItem(STRATEGY_KEY);
-  for(const[k,v]of Object.entries(DEFAULT_STRATEGY)){
-    const el=document.getElementById(k);
-    if(el) el.value=v;
-  }
-  const st=document.getElementById('strategy-status');
-  st.textContent='Reset to defaults';st.style.color='var(--blue)';
-  setTimeout(()=>st.textContent='',2000);
+function switchTab(t){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('panel-swap').style.display=t==='swap'?'block':'none';
+  document.getElementById('panel-bridge').style.display=t==='bridge'?'block':'none';
+  if(t==='agent'){document.getElementById('panel-agent').classList.toggle('show')}
 }
 
-fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{lastPrice=parseInt(d.price);document.getElementById('btc').textContent='$'+lastPrice.toLocaleString()}).catch(()=>document.getElementById('btc').textContent='—');
-setInterval(()=>fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
-  .then(r=>r.json()).then(d=>{const p=parseInt(d.price),el=document.getElementById('btc');el.textContent='$'+p.toLocaleString();if(p!==lastPrice){el.classList.remove('price-flash');void el.offsetWidth;el.classList.add('price-flash')}lastPrice=p}).catch(()=>{}),10000);
-
-(function t(){const el=document.getElementById('typewriter'),txt='> agent.run() — BTC 5-min prediction agent. Connect wallet to deposit & withdraw.';let i=0;function type(){if(i<txt.length){el.textContent+=txt.charAt(i);i++;setTimeout(type,30+Math.random()*40)}else el.classList.remove('cursor')}type()})();
-
-function copyInstallCmd(){
-  navigator.clipboard.writeText(document.getElementById('install-cmd').textContent).then(()=>{
-    const s=document.getElementById('copy-status');
-    s.textContent='Copied!';s.style.color='var(--neon)';
-    setTimeout(()=>s.textContent='',2000);
-  });
-}
-
-updateDepositBal();
-loadStrategy();
+updateAgentBal();
 </script>
 </body>
 </html>
