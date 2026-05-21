@@ -256,15 +256,10 @@ function toast(msg,type='ok'){const t=document.getElementById('toast');t.innerHT
 async function connectWallet(){
   if(!window.ethereum){alert('Please install OKX Wallet or MetaMask');return}
   try{
-    await window.ethereum.request({method:'eth_requestAccounts'});
     provider=new ethers.BrowserProvider(window.ethereum);
-    try{
-      await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:CHAIN.chainId}]});
-    }catch(switchErr){
-      if(switchErr.code===4902||switchErr.code===-32603){
-        await window.ethereum.request({method:'wallet_addEthereumChain',params:[CHAIN]});
-      }
-    }
+    await provider.send('wallet_switchEthereumChain',[{chainId:CHAIN.chainId}]).catch(()=>
+      provider.send('wallet_addEthereumChain',[CHAIN])
+    );
     signer=await provider.getSigner();addr=await signer.getAddress();
     document.getElementById('wallet-addr-short').textContent=s(addr);
     document.getElementById('wallet-bar').style.display='block';
@@ -278,7 +273,7 @@ async function connectWallet(){
     document.getElementById('agent-addr').textContent=s(getDepAddr());
     document.getElementById('agent-badge').classList.add('on');
     await Promise.all([updateBal(),updateAgentBal()]);
-  }catch(e){alert('Connection failed: '+(e.reason||e.message||e));console.error(e)}
+  }catch(e){alert(e.reason||e.message||'Connection failed');console.error(e)}
 }
 
 function disconnectWallet(){
